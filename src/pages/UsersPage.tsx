@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2, Search, Edit } from 'lucide-react';
+import { UserPlus, Trash2, Search, Edit, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { storage } from '@/lib/storage';
 import type { TripUser } from '@/types';
@@ -38,18 +38,88 @@ export function UsersPage() {
   const [manageDobMonth, setManageDobMonth] = useState('');
   const [manageDobYear, setManageDobYear] = useState('');
   const [manageGender, setManageGender] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
 
   const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const CURRENT_YEAR = new Date().getFullYear();
   const YEAR_START = 1920;
 
+  // Format date from YYYY-MM-DD to DD-MM-YYYY
+  const formatDateOfBirth = (dateString: string | undefined): string => {
+    if (!dateString) return '—';
+    // Check if it's in YYYY-MM-DD format
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+      const [year, month, day] = dateString.split('-');
+      return `${day}-${month}-${year}`;
+    }
+    // If already in another format or invalid, return as is
+    return dateString;
+  };
+
+  const API_BASE = 'http://localhost:3000/api/users';
+
+  // Fetch users from MongoDB (testdb) via Express API
+  const fetchUsersFromAPI = async () => {
+    setLoading(true);
+    setApiError(null);
+    try {
+      const response = await fetch(API_BASE);
+      if (!response.ok) {
+        throw new Error('Failed to fetch users from API');
+      }
+      const data = await response.json();
+      const list = Array.isArray(data) ? data : (data.users || []);
+
+      // Transform API data (MongoDB: _id, firstName, lastName, dob) to TripUser format
+      const transformedUsers: TripUser[] = list.map((user: any) => {
+        // Handle both cases: either separate firstName/lastName or combined name
+        const firstName = user.firstName || (user.name ? user.name.split(' ')[0] : '');
+        const lastName = user.lastName || (user.name ? user.name.split(' ').slice(1).join(' ') : '');
+        const dob = user.dob || user.dateOfBirth;
+        const dateOfBirth = typeof dob === 'string' ? dob.split('T')[0] : dob ? new Date(dob).toISOString().slice(0, 10) : undefined;
+        return {
+          id: (user._id ?? user.id).toString(),
+          firstName,
+          lastName,
+          email: user.email,
+          phone: user.phone || undefined,
+          dateOfBirth,
+          gender: user.gender || undefined,
+        };
+      });
+      
+      setTripUsers(transformedUsers);
+      showToast('Users loaded from API successfully!');
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to fetch users';
+      setApiError(errorMsg);
+      showToast('Failed to load users from API. Loading local data...');
+      // Fallback to localStorage
+      setTripUsers(storage.getTripUsers());
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setTripUsers(storage.getTripUsers());
+    fetchUsersFromAPI();
   }, []);
 
-  const refreshTripUsers = () => setTripUsers(storage.getTripUsers());
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery]);
 
-  const handleAddUser = () => {
+  const refreshTripUsers = () => {
+    fetchUsersFromAPI();
+  };
+
+  const handleAddUser = async () => {
     const email = newEmail.trim().toLowerCase();
     const trimmed = newName.trim();
 
@@ -74,16 +144,37 @@ export function UsersPage() {
       ? `${newDobYear}-${newDobMonth.padStart(2, '0')}-${newDobDay.padStart(2, '0')}`
       : undefined;
 
-    storage.addTripUser({
-      firstName,
-      lastName,
+    const payload = {
+      name: [firstName, lastName].filter(Boolean).join(' '),
       email,
       phone: newPhone.trim() || undefined,
-      dateOfBirth,
+      dateOfBirth: dateOfBirth || undefined,
       gender: newGender.trim() || undefined,
-    });
-    refreshTripUsers();
-    showToast('User added successfully!');
+    };
+
+    try {
+      const response = await fetch(API_BASE, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error('Failed to add user to API');
+      }
+      refreshTripUsers();
+      showToast('User added successfully!');
+    } catch {
+      showToast('Failed to sync with API. Adding locally.');
+      storage.addTripUser({
+        firstName,
+        lastName,
+        email,
+        phone: newPhone.trim() || undefined,
+        dateOfBirth,
+        gender: newGender.trim() || undefined,
+      });
+      refreshTripUsers();
+    }
 
     setNewName('');
     setNewEmail('');
@@ -96,16 +187,100 @@ export function UsersPage() {
     setDialogOpen(false);
   };
 
-  const handleDeleteUser = (id: string, displayName: string) => {
+  const handleDeleteUser = async (id: string, displayName: string) => {
     if (!confirm(`Are you sure you want to remove ${displayName}?`)) return;
-    storage.deleteTripUser(id);
-    refreshTripUsers();
-    showToast('User removed successfully!');
+    try {
+      const response = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete on API');
+      refreshTripUsers();
+      showToast('User removed successfully!');
+    } catch {
+      showToast('Failed to delete on API. Removing locally.');
+      storage.deleteTripUser(id);
+      refreshTripUsers();
+    }
+  };
+
+  const resetManageDialog = () => {
+    setManageDialogOpen(false);
+    setManageUserId('');
+    setManageName('');
+    setManageEmail('');
+    setManagePhone('');
+    setManageDobDay('');
+    setManageDobMonth('');
+    setManageDobYear('');
+    setManageGender('');
+  };
+
+  const handleSaveUser = async () => {
+    if (!manageUserId) {
+      resetManageDialog();
+      return;
+    }
+    const trimmed = manageName.trim();
+    const spaceIndex = trimmed.indexOf(' ');
+    const firstName = spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
+    const lastName = spaceIndex === -1 ? '' : trimmed.slice(spaceIndex + 1).trim();
+    const dateOfBirth = (manageDobDay && manageDobMonth && manageDobYear)
+      ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
+      : undefined;
+    const payload = {
+      name: [firstName, lastName].filter(Boolean).join(' '),
+      email: manageEmail.trim(),
+      phone: managePhone.trim() || undefined,
+      dateOfBirth: dateOfBirth || undefined,
+      gender: manageGender.trim() || undefined,
+    };
+    const updateData = {
+      firstName,
+      lastName,
+      email: manageEmail.trim(),
+      phone: managePhone.trim() || undefined,
+      dateOfBirth,
+      gender: manageGender.trim() || undefined,
+    };
+    try {
+      const response = await fetch(`${API_BASE}/${manageUserId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) throw new Error('Failed to update on API');
+      refreshTripUsers();
+      showToast('User updated successfully!');
+      resetManageDialog();
+    } catch {
+      showToast('Failed to sync with API. Updating locally.');
+      storage.updateTripUser(manageUserId, updateData);
+      refreshTripUsers();
+      resetManageDialog();
+    }
   };
 
   return (
     <div className="space-y-5 font-sans w-full">
-      {/* Search Box + Add User */}
+      {/* API Status Banner */}
+      {apiError && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="text-yellow-800 text-sm">⚠️ API Error: {apiError}</span>
+            <span className="text-gray-600 text-xs">(Showing local data)</span>
+          </div>
+          <Button
+            size="sm"
+            onClick={fetchUsersFromAPI}
+            disabled={loading}
+            className="h-8 px-3 text-xs text-white hover:opacity-90"
+            style={{ backgroundColor: '#06B3C4' }}
+          >
+            <RefreshCw className={`h-3 w-3 mr-1 ${loading ? 'animate-spin' : ''}`} />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {/* Search Box + Add User + Refresh Button */}
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
@@ -117,6 +292,15 @@ export function UsersPage() {
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
+        <Button
+          onClick={fetchUsersFromAPI}
+          disabled={loading}
+          className="h-10 px-4 text-sm font-medium rounded-full shadow-md text-white hover:opacity-90"
+          style={{ backgroundColor: '#06B3C4' }}
+        >
+          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+          Refresh
+        </Button>
         <Dialog open={dialogOpen}         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {
@@ -264,7 +448,24 @@ export function UsersPage() {
 
       {/* Users Table */}
       <div className="bg-white rounded-lg shadow-sm border" style={{ borderColor: '#EEF0F1' }}>
-        {(() => {
+        {loading ? (
+          <div className="text-center py-20">
+            <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2" style={{ borderColor: '#06B3C4' }}></div>
+            <p className="mt-4 text-gray-600">Loading users from API...</p>
+          </div>
+        ) : apiError ? (
+          <div className="text-center py-10">
+            <p className="text-red-500 text-sm mb-2">⚠️ {apiError}</p>
+            <p className="text-gray-500 text-sm">Showing local data instead.</p>
+            <Button
+              onClick={fetchUsersFromAPI}
+              className="mt-4 text-white hover:opacity-90"
+              style={{ backgroundColor: '#06B3C4' }}
+            >
+              Retry API
+            </Button>
+          </div>
+        ) : (() => {
           const query = searchQuery.toLowerCase().trim();
           const filtered = !query
             ? tripUsers
@@ -282,6 +483,13 @@ export function UsersPage() {
                   .toLowerCase();
                 return searchable.includes(query);
               });
+          
+          // Pagination calculations
+          const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedUsers = filtered.slice(startIndex, endIndex);
+          
           return filtered.length === 0 ? (
             <div className="text-center py-10">
               <p className="text-gray-500 text-sm">
@@ -289,6 +497,7 @@ export function UsersPage() {
               </p>
             </div>
           ) : (
+          <>
           <div className="overflow-x-auto font-sans">
             <table className="w-full font-sans">
               <thead>
@@ -314,7 +523,7 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((user) => {
+                {paginatedUsers.map((user) => {
                   const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
                   return (
                     <tr
@@ -332,7 +541,7 @@ export function UsersPage() {
                         {user.phone ?? '—'}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-700">
-                        {user.dateOfBirth ?? '—'}
+                        {formatDateOfBirth(user.dateOfBirth)}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-700">
                         {user.gender ?? '—'}
@@ -383,6 +592,72 @@ export function UsersPage() {
               </tbody>
             </table>
           </div>
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, filtered.length)} of {filtered.length} users
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    // Show first page, last page, current page, and pages around current
+                    const showPage = page === 1 || 
+                                    page === totalPages || 
+                                    (page >= currentPage - 1 && page <= currentPage + 1);
+                    
+                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                                        (page === currentPage + 2 && currentPage < totalPages - 2);
+                    
+                    if (showEllipsis) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    
+                    if (!showPage) return null;
+                    
+                    return (
+                      <Button
+                        key={page}
+                        variant="ghost"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
+                          currentPage === page
+                            ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                            : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                        }`}
+                        style={
+                          currentPage === page 
+                            ? { backgroundColor: '#06B3C4' } 
+                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                        }
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
+          </>
           );
         })()}
       </div>
@@ -495,17 +770,7 @@ export function UsersPage() {
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"
               style={{ backgroundColor: '#06B3C4' }}
-              onClick={() => {
-                setManageDialogOpen(false);
-                setManageUserId('');
-                setManageName('');
-                setManageEmail('');
-                setManagePhone('');
-                setManageDobDay('');
-                setManageDobMonth('');
-                setManageDobYear('');
-                setManageGender('');
-              }}
+              onClick={resetManageDialog}
             >
               Cancel
             </Button>
@@ -513,38 +778,7 @@ export function UsersPage() {
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"
               style={{ backgroundColor: '#06B3C4' }}
-              onClick={() => {
-                if (!manageUserId) {
-                  setManageDialogOpen(false);
-                  return;
-                }
-                const trimmed = manageName.trim();
-                const spaceIndex = trimmed.indexOf(' ');
-                const firstName = spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
-                const lastName = spaceIndex === -1 ? '' : trimmed.slice(spaceIndex + 1).trim();
-                const dateOfBirth = (manageDobDay && manageDobMonth && manageDobYear)
-                  ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
-                  : undefined;
-                storage.updateTripUser(manageUserId, {
-                  firstName,
-                  lastName,
-                  email: manageEmail.trim(),
-                  phone: managePhone.trim() || undefined,
-                  dateOfBirth,
-                  gender: manageGender.trim() || undefined,
-                });
-                refreshTripUsers();
-                showToast('User updated successfully!');
-                setManageDialogOpen(false);
-                setManageUserId('');
-                setManageName('');
-                setManageEmail('');
-                setManagePhone('');
-                setManageDobDay('');
-                setManageDobMonth('');
-                setManageDobYear('');
-                setManageGender('');
-              }}
+              onClick={handleSaveUser}
             >
               Save
             </Button>

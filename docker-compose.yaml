@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  # MongoDB Service
+  mongo:
+    image: mongo:latest
+    container_name: roamana-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: testdb
+    volumes:
+      - mongo_data:/data/db
+    restart: unless-stopped
+    networks:
+      - roamana-network
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Application Service (Backend + Frontend)
+  app:
+    build: .
+    container_name: roamana-admin
+    ports:
+      - "3000:3000"
+      - "5173:5173"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/testdb
+      NODE_ENV: development
+    volumes:
+      - ./src:/app/src
+      - ./backend:/app/backend
+    restart: unless-stopped
+    networks:
+      - roamana-network
+
+networks:
+  roamana-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+

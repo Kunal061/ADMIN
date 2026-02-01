@@ -26,7 +26,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen h-screen relative font-sans flex flex-col bg-white">
-      <Toast message={toast} />
+      <Toast message={toast?.message ?? null} variant={toast?.variant} />
       {/* White header: logo + page title (left); profile (right); mobile menu button left of logo */}
       <header
         className="w-full flex items-center justify-between gap-4 px-4 py-0.5 lg:px-6 lg:py-1 shrink-0 relative z-20 bg-white border-b border-gray-200"

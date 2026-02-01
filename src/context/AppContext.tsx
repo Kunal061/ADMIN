@@ -38,8 +38,8 @@ interface AppContextType {
   deleteMood: (id: string) => void;
 
   // Toast
-  toast: string | null;
-  showToast: (message: string) => void;
+  toast: { message: string; variant: 'success' | 'error' } | null;
+  showToast: (message: string, variant?: 'success' | 'error') => void;
 }
 
 const defaultUser: User = {
@@ -93,12 +93,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [styles, setStyles] = useState<StyleOption[]>(defaultStyles);
   const [moods, setMoods] = useState<MoodOption[]>(defaultMoods);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showToast = (message: string) => {
+  const showToast = (message: string, variant: 'success' | 'error' = 'success') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast(message);
+    setToast({ message, variant });
     toastTimeoutRef.current = setTimeout(() => {
       setToast(null);
       toastTimeoutRef.current = null;
