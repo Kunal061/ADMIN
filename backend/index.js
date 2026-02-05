@@ -1,8 +1,8 @@
+require("dotenv").config();
 const express = require("express");
-const mongoose = require("mongoose");
 const cors = require("cors");
 
-// INIT APP FIRST ✅
+// INIT APP
 const app = express();
 
 // MIDDLEWARE
@@ -14,23 +14,17 @@ app.get("/ping", (req, res) => {
   res.json({ message: "Pong! Server is running" });
 });
 
-// ROUTES
+// ROUTES - Proxy to external API
 const userRoutes = require("./routes/userRoutes");
-app.use("/api/users", userRoutes);
+app.use("/api/admin/users", userRoutes);
 
-// DB CONNECTION + SERVER START
-const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017/testdb";
-console.log("Connecting to MongoDB at:", mongoUri);
+// Auth proxy route
+const authRoutes = require("./routes/authRoutes");
+app.use("/api/auth", authRoutes);
 
-mongoose
-  .connect(mongoUri)
-  .then(() => {
-    console.log("MongoDB connected successfully");
-    app.listen(3000, '0.0.0.0', () => {
-      console.log("REST API running on http://0.0.0.0:3000");
-    });
-  })
-  .catch((err) => {
-    console.error("MongoDB connection failed:", err);
-    process.exit(1);
-  });
+// START SERVER
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`REST API proxy running on http://0.0.0.0:${PORT}`);
+  console.log(`Proxying to: ${process.env.API_BASE_URL || 'Not configured'}`);
+});

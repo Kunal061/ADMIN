@@ -1,12 +1,16 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { User, Trip, StyleOption, MoodOption, AuthState } from '@/types';
 import { storage, defaultStyles, defaultMoods } from '@/lib/storage';
+import { fetchAllowedUsers, loginWithCredentials, validateUserInAllowlist, type AllowedUser } from '@/lib/authApi';
 
 interface AppContextType {
   // Auth
   auth: AuthState;
-  login: (email: string, password: string) => boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  isLoadingAllowlist: boolean;
+  allowlistError: string | null;
+  retryFetchAllowlist: () => void;
 
   // User
   currentUser: User;
@@ -88,6 +92,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user: null,
   });
 
+  // API-based authentication allowlist
+  const [allowedUsers, setAllowedUsers] = useState<Map<string, AllowedUser>>(new Map());
+  const [isLoadingAllowlist, setIsLoadingAllowlist] = useState(true);
+  const [allowlistError, setAllowlistError] = useState<string | null>(null);
+
   // Initialize with empty/defaults, but these will be overwritten on load
   const [currentUser, setCurrentUser] = useState<User>(defaultUser);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -105,26 +114,55 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 3000);
   };
 
-  // Load last active user on mount
-  useEffect(() => {
-    const lastUserEmail = storage.getLastActiveUser();
-    if (lastUserEmail) {
-      const userData = storage.loadUserData(lastUserEmail);
-      if (userData) {
-        const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
-        const mergedMoods = mergeMoods(defaultMoods, Array.isArray(userData.moods) ? userData.moods : undefined);
+  // Fetch allowed users from API for login validation
+  const loadAllowlist = async () => {
+    setIsLoadingAllowlist(true);
+    setAllowlistError(null);
+    try {
+      const users = await fetchAllowedUsers();
+      setAllowedUsers(users);
+      if (users.size === 0) {
+        setAllowlistError('Unable to load users. Token may be expired. Please check console for details.');
+      }
+    } catch (error) {
+      console.error('Failed to load allowlist:', error);
+      setAllowlistError('Failed to load user allowlist. Please check your API token.');
+    } finally {
+      setIsLoadingAllowlist(false);
+    }
+  };
 
-        setAuth({
-          isAuthenticated: true,
-          user: userData.user,
-        });
-        setCurrentUser(userData.user);
-        setTrips(userData.trips);
-        setStyles(mergedStyles);
-        setMoods(mergedMoods);
+  const retryFetchAllowlist = () => {
+    loadAllowlist();
+  };
+
+  // Load allowlist from API on mount
+  useEffect(() => {
+    loadAllowlist();
+  }, []);
+
+  // Load last active user on mount (after allowlist is loaded)
+  useEffect(() => {
+    if (!isLoadingAllowlist) {
+      const lastUserEmail = storage.getLastActiveUser();
+      if (lastUserEmail) {
+        const userData = storage.loadUserData(lastUserEmail);
+        if (userData) {
+          const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
+          const mergedMoods = mergeMoods(defaultMoods, Array.isArray(userData.moods) ? userData.moods : undefined);
+
+          setAuth({
+            isAuthenticated: true,
+            user: userData.user,
+          });
+          setCurrentUser(userData.user);
+          setTrips(userData.trips);
+          setStyles(mergedStyles);
+          setMoods(mergedMoods);
+        }
       }
     }
-  }, []);
+  }, [isLoadingAllowlist]);
 
   // Persist changes whenever relevant state changes, BUT only if authenticated
   useEffect(() => {
@@ -159,25 +197,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const login = (email: string, password: string): boolean => {
+  const login = async (email: string, password: string): Promise<boolean> => {
     if (!email || password.length < 6) return false;
 
-    const normalizedEmail = email.toLowerCase();
-    const registeredUsers = storage.getRegisteredUsers();
-    if (!registeredUsers.includes(normalizedEmail)) return false;
+    console.log('🔐 Attempting login for:', email);
+    console.log('📋 Allowlist size:', allowedUsers.size);
 
-    const userInfo = storage.getRegisteredUserInfo(normalizedEmail);
-    if (!userInfo || userInfo.password !== password) return false;
+    // Call the login API endpoint to validate credentials
+    const loginResult = await loginWithCredentials(email, password);
+    
+    console.log('🔑 Login API result:', loginResult);
+    
+    if (!loginResult.success) {
+      console.error('❌ Login API failed:', loginResult.message);
+      return false;
+    }
 
+    console.log('✅ Login API succeeded, checking allowlist...');
+
+    // Check if user is in allowlist
+    const allowedUser = validateUserInAllowlist(email, allowedUsers);
+    console.log('👤 Allowlist check result:', allowedUser ? 'Found' : 'Not found');
+    
+    if (!allowedUser) {
+      console.error('❌ User not in allowlist. Email:', email);
+      console.log('📋 Available emails in allowlist:', Array.from(allowedUsers.keys()));
+      return false;
+    }
+
+    const normalizedEmail = allowedUser.email;
+
+    // Load or create user data in localStorage (for trips, styles, moods)
     const userData = storage.loadUserData(normalizedEmail);
-    const displayName =
-      (userInfo.name != null && String(userInfo.name).trim())
-        ? String(userInfo.name).trim()
-        : (userInfo.firstName != null && userInfo.lastName != null)
-          ? `${userInfo.firstName} ${userInfo.lastName}`.trim()
-          : userData.user.name;
+    
+    // Use name from API if available
+    const displayName = allowedUser.name || 
+      `${allowedUser.firstName || ''} ${allowedUser.lastName || ''}`.trim() ||
+      userData.user.name;
+    
     if (displayName) {
-      userData.user = { ...userData.user, name: displayName };
+      userData.user = { ...userData.user, name: displayName, email: normalizedEmail };
     }
 
     const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
@@ -475,6 +534,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         auth,
         login,
         logout,
+        isLoadingAllowlist,
+        allowlistError,
+        retryFetchAllowlist,
         currentUser,
         updateUser,
         updateProfilePhoto,

@@ -1,13 +1,18 @@
-# ✅ Frontend-Backend Integration Complete
+# ✅ Frontend-External API Integration Complete
 
 ## Summary
 
-Your Users section is now **fully integrated** with the backend API for all CRUD operations.
+Your Users section is now **fully integrated** with the external Roamana API with direct API calls.
 
-### API Endpoint
+### API Architecture
 ```
-http://localhost:3000/api/users
+Frontend → External API (devapi-roamania.codibex.com)
 ```
+
+### API Endpoints
+- **Frontend calls**: `https://devapi-roamania.codibex.com/api/v1/admin/users`
+- **Authentication**: Bearer Token (from .env.local)
+- **Backend proxy**: Optional (available in `backend/` folder for CORS workarounds if needed)
 
 ### Supported Operations
 
@@ -22,25 +27,25 @@ http://localhost:3000/api/users
 
 #### 1. **GET** - Load Users
 - Triggered on page load and refresh
-- Fetches all users from MongoDB
+- Fetches all users from external API
 - Displays in paginated table (15 per page)
 
 #### 2. **POST** - Add User
 - User fills form and clicks "Add User"
-- Data sent to backend
-- Stored in MongoDB
+- Data sent to external API
+- User created
 - List refreshed automatically
 
 #### 3. **PUT** - Update User
 - Click edit icon → modify fields → click "Save"
-- Sends updated data to backend
-- MongoDB record updated
+- Sends updated data to external API
+- User record updated
 - List refreshed
 
 #### 4. **DELETE** - Remove User
 - Click delete icon → confirm
-- Sends DELETE request to backend
-- User removed from MongoDB
+- Sends DELETE request to external API
+- User removed
 - List refreshed
 
 ### Error Handling
@@ -52,33 +57,72 @@ http://localhost:3000/api/users
 
 ### Requirements
 
-- ✅ Backend running on `http://localhost:3000`
-- ✅ MongoDB connected to `localhost:27017/testdb`
-- ✅ CORS enabled on backend
-- ✅ User routes configured
+- ✅ Environment variables configured (`.env.local`)
+- ✅ API token configured for external API authentication
+- ✅ Frontend calls external API directly
+- ✅ No MongoDB dependencies
+- ✅ Backend proxy optional (available if needed for CORS)
 
 ### Quick Test
 
-1. Make sure backend is running:
+1. Configure environment variables:
+   - Create `.env.local` in project root
+   - Add `VITE_API_BASE_URL` and `VITE_API_TOKEN`
+
+2. Install frontend dependencies:
    ```bash
-   node /Users/kunalrohilla/Documents/GitHub/ADMIN/backend/index.js
+   npm install
    ```
 
-2. Open admin panel and go to Users section
+3. Start frontend:
+   ```bash
+   npm run dev
+   ```
+   
+   You should see:
+   ```
+   VITE v5.x.x ready in xxx ms
+   ➜  Local:   http://localhost:5173/
+   ```
 
-3. Try:
+4. Open admin panel and go to Users section
+
+5. Try:
    - Add a new user
    - Edit existing user
    - Delete a user
    - Click Refresh
 
-All operations should now sync with the MongoDB backend! 🎉
+All operations call the external Roamana API directly! 🎉
 
-### Database
+### Optional: Backend Proxy
 
-- **Database**: `testdb`
-- **Collection**: `users`
-- **Fields**: `_id`, `name`, `email`, `phone`, `dateOfBirth`, `gender`
+If you encounter CORS issues or need request logging:
+
+```bash
+cd backend
+npm install
+node index.js
+```
+
+Then update `.env.local` to use `http://localhost:3000` instead of the external URL.
+
+### External API
+
+- **Base URL**: `https://devapi-roamania.codibex.com/api/v1`
+- **Endpoint**: `/admin/users`
+- **Authentication**: Bearer Token
+- **Fields**: `name`, `email`, `phone`, `dateOfBirth`, `gender`
+
+---
+
+## Key Changes from Previous Architecture
+
+- ❌ **Removed**: MongoDB dependency
+- ❌ **Removed**: Localhost fallbacks in frontend
+- ✅ **Added**: Direct API calls from frontend
+- ✅ **Added**: Environment variable validation
+- ✅ **Kept**: Backend proxy (optional, in `backend/` folder)
 
 ---
 

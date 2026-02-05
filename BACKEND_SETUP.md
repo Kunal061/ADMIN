@@ -1,56 +1,69 @@
-# Backend Server Setup - Summary
+# Backend Proxy Setup (Optional)
 
-## ✅ Backend Server Status
+## Overview
 
-Your backend server is now running on **http://localhost:3000** with the following changes:
+The backend proxy is **optional** and only needed for:
+- CORS workarounds
+- Request logging
+- Additional middleware
 
-### Changes Made:
+## ⚠️ Important Note
 
-1. **Added `/ping` endpoint** to the backend server
-   - Returns: `{ "message": "Pong! Server is running" }`
-   - Used for health checks
+**The frontend now calls the external API directly.** You do NOT need to run the backend proxy for normal operation.
 
-2. **Port changed from 5000 to 3000**
-   - Previous port 5000 was occupied by macOS ControlCenter
-   - Now running on port 3000
+## Backend Proxy Details (If Needed)
 
-3. **File: `/backend/index.js` updated**
+### Server Configuration:
+- **Port**: 3000
+- **Framework**: Express.js
+- **CORS**: Enabled
+- **Purpose**: Proxy requests to external Roamana API
 
-### Current Endpoints:
+### Endpoints:
 
 ```
 GET http://localhost:3000/ping
 Response: { "message": "Pong! Server is running" }
 
-POST http://localhost:3000/api/users
-For creating new users in MongoDB
+All /api/users requests are proxied to:
+https://devapi-roamania.codibex.com/api/v1/admin/users
 ```
 
-### Server Details:
-- **Status**: ✅ Running
-- **Port**: 3000
-- **Database**: MongoDB (localhost:27017/testdb)
-- **Framework**: Express.js
-- **CORS**: Enabled
+### To Start Backend Proxy:
 
-### To test in browser:
-Open: `http://localhost:3000/ping`
-
-### To test with curl:
 ```bash
-curl http://localhost:3000/ping
+cd backend
+npm install
+node index.js
 ```
 
-### To stop the server:
-```bash
-Kill the Node.js process running on port 3000
+Expected output:
+```
+REST API proxy running on http://0.0.0.0:3000
+Proxying to: https://devapi-roamania.codibex.com/api/v1
+```
+
+### To Use Backend Proxy:
+
+Update `.env.local` to use the proxy:
+
+```env
+VITE_API_BASE_URL=http://localhost:3000/api
+VITE_API_TOKEN=<your-token-here>
+```
+
+## Current Architecture
+
+**Default (No Backend):**
+```
+Frontend → External API
+```
+
+**With Backend Proxy (Optional):**
+```
+Frontend → Backend Proxy → External API
 ```
 
 ## Next Steps:
 
-Update your frontend (`UsersPage.tsx`) to POST user data to:
-```
-http://localhost:3000/api/users
-```
-
-When users are added in the admin panel, they will be sent to this endpoint and stored in MongoDB.
+The frontend is already configured to call the external API directly. No additional setup needed unless you want to use the backend proxy.

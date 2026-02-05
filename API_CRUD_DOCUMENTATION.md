@@ -1,19 +1,36 @@
-# Frontend-Backend API Integration
+# Frontend-External API Integration
 
 ## Overview
-The Users section in the admin panel is now fully integrated with the backend API at `http://localhost:3000/api/users`.
+The admin panel is now fully integrated with the external Roamana API. This includes:
+- **User Management**: CRUD operations for users via `/admin/users`
+- **Authentication**: API-based login using user allowlist from `/admin/users`
 
-## API Endpoint
+## API Architecture
+
+### Frontend → External API (Direct)
+
 ```
-Base URL: http://localhost:3000/api/users
+Frontend (React)
+    ↓ fetch with Bearer token
+External API (https://devapi-roamania.codibex.com/api/v1/admin/users)
 ```
+
+## API Endpoints
+
+### External API (Direct)
+```
+Base URL: https://devapi-roamania.codibex.com/api/v1/admin/users
+Authentication: Bearer Token (configured in .env.local)
+```
+
+> **Note**: A backend proxy folder exists for optional use (CORS workarounds, logging, etc.) but is not required for normal operation.
 
 ## Supported Operations
 
 ### 1. GET - Fetch All Users
-**Endpoint**: `GET http://localhost:3000/api/users`
+**Endpoint**: `GET https://devapi-roamania.codibex.com/api/v1/admin/users`
 
-**Purpose**: Fetch all users from MongoDB
+**Purpose**: Fetch all users from external API
 
 **Response**:
 ```json
@@ -37,9 +54,9 @@ Base URL: http://localhost:3000/api/users
 ---
 
 ### 2. POST - Create New User
-**Endpoint**: `POST http://localhost:3000/api/users`
+**Endpoint**: `POST https://devapi-roamania.codibex.com/api/v1/admin/users`
 
-**Purpose**: Add a new user to the database
+**Purpose**: Add a new user via external API
 
 **Request Body**:
 ```json
@@ -69,9 +86,9 @@ Base URL: http://localhost:3000/api/users
 ---
 
 ### 3. PUT - Update Existing User
-**Endpoint**: `PUT http://localhost:3000/api/users/{userId}`
+**Endpoint**: `PUT https://devapi-roamania.codibex.com/api/v1/admin/users/{userId}`
 
-**Purpose**: Update user information
+**Purpose**: Update user information via external API
 
 **Request Body**:
 ```json
@@ -101,9 +118,9 @@ Base URL: http://localhost:3000/api/users
 ---
 
 ### 4. DELETE - Remove User
-**Endpoint**: `DELETE http://localhost:3000/api/users/{userId}`
+**Endpoint**: `DELETE https://devapi-roamania.codibex.com/api/v1/admin/users/{userId}`
 
-**Purpose**: Delete a user from the database
+**Purpose**: Delete a user via external API
 
 **Response**:
 ```json
@@ -141,11 +158,11 @@ Frontend Form
     ↓
 Validation 
     ↓
-POST /api/users (name, email, phone, dateOfBirth, gender)
+POST /admin/users (name, email, phone, dateOfBirth, gender)
     ↓
-MongoDB (testdb.users)
+External API (saves user)
     ↓
-GET /api/users (refresh list)
+GET /admin/users (refresh list)
     ↓
 Display updated list
 ```
@@ -158,11 +175,11 @@ Open Dialog with user data
     ↓
 Modify fields
     ↓
-PUT /api/users/{id}
+PUT /admin/users/{id}
     ↓
-MongoDB (update record)
+External API (updates user)
     ↓
-GET /api/users (refresh)
+GET /admin/users (refresh)
     ↓
 Close dialog & show success
 ```
@@ -173,11 +190,11 @@ Click Delete
     ↓
 Confirm dialog
     ↓
-DELETE /api/users/{id}
+DELETE /admin/users/{id}
     ↓
-MongoDB (remove record)
+External API (removes user)
     ↓
-GET /api/users (refresh)
+GET /admin/users (refresh)
     ↓
 Show success toast
 ```
@@ -224,11 +241,9 @@ Show success toast
 
 ### Test Flow:
 
-1. **Verify Backend Running**:
-   ```bash
-   curl http://localhost:3000/ping
-   # Should return: { "message": "Pong! Server is running" }
-   ```
+1. **Verify Environment Variables**:
+   - Check `.env.local` has `VITE_API_BASE_URL` and `VITE_API_TOKEN`
+   - Token should be valid (not expired)
 
 2. **Add a User**:
    - Open admin panel
@@ -236,40 +251,132 @@ Show success toast
    - Click "Add User"
    - Fill in details
    - Click "Add User"
-   - Check MongoDB for new record
+   - User appears in list
 
 3. **Edit a User**:
    - Click edit icon on any user
    - Modify any field
    - Click "Save"
-   - Verify changes in MongoDB
+   - Changes reflected in list
 
 4. **Delete a User**:
    - Click delete icon on any user
    - Confirm deletion
-   - User removed from list and MongoDB
+   - User removed from list
 
 ---
 
 ## Configuration
 
-### Backend URL:
-Located in `/src/pages/UsersPage.tsx` line ~70:
-```typescript
-const API_BASE = 'http://localhost:3000/api/users';
+### Frontend Environment Variables (`.env.local`)
+```env
+VITE_API_BASE_URL=https://devapi-roamania.codibex.com/api/v1
+VITE_API_TOKEN=<your-token-here>
 ```
 
-To change backend URL, update this constant.
+> **Note**: Backend proxy has its own `backend/.env` for optional use, but is not required for normal operation.
+
+### Security Notes
+- `.env.local` is git-ignored
+- Never commit tokens to version control
+- Token is sent as `Authorization: Bearer <token>` header
+- Frontend authenticates directly with the external API
 
 ---
 
+## Installation
+
+### 1. Configure Environment Variables
+Create `.env.local` in project root with your API credentials (see Configuration section above).
+
+### 2. Install Frontend Dependencies
+```bash
+npm install
+```
+
+### 3. Start Frontend
+```bash
+npm run dev
+```
+
+Expected output:
+```
+VITE v5.x.x ready in xxx ms
+➜  Local:   http://localhost:5173/
+```
+
+### 4. (Optional) Backend Proxy
+If you need to use the backend proxy (for CORS or logging):
+
+```bash
+cd backend
+npm install
+node index.js
+```
+
+## Authentication System
+
+### How Login Works
+
+The application now uses **API-based authentication** instead of localStorage:
+
+1. **On App Load**: Fetches all users from `/admin/users` endpoint
+2. **Allowlist Caching**: Stores users in memory (React state) for the session
+3. **Login Validation**: Validates credentials against the cached allowlist
+4. **Session Management**: Uses existing localStorage for user preferences (trips, styles, moods)
+
+### Login Flow
+
+```
+App Load → Fetch /admin/users → Cache in memory
+    ↓
+User Login → Validate against allowlist → Success/Failure
+    ↓
+Success → Load user preferences from localStorage → Navigate to dashboard
+```
+
+### User Requirements
+
+- Users must exist in the `/admin/users` API to log in
+- Users should have an `email` and `password` field in the API response
+- No registration flow - admin must add users via Users page first
+
+### Example API Response
+
+```json
+[
+  {
+    "_id": "123",
+    "email": "admin20@yopmail.com",
+    "password": "Admin0001",
+    "name": "Admin User",
+    "phone": "+1234567890",
+    "dateOfBirth": "1990-01-01",
+    "gender": "male"
+  }
+]
+```
+
+### Security Notes
+
+- Allowlist is cached in memory, not persisted to localStorage
+- Refreshes on each app load for security
+- Passwords are compared as plain text (ensure API handles hashing/encryption)
+- Bearer token authentication for API calls
+
 ## Status
 
-✅ GET - Working  
-✅ POST - Working  
-✅ PUT - Working  
-✅ DELETE - Working  
+✅ GET - Direct to external API  
+✅ POST - Direct to external API  
+✅ PUT - Direct to external API  
+✅ DELETE - Direct to external API  
+✅ Bearer Token Authentication - Configured  
+✅ Environment Variables - Configured  
 ✅ Error Handling - Implemented  
-✅ Fallback to localStorage - Enabled  
+✅ Fallback to localStorage - Enabled (for user preferences only)  
+✅ API-Based Login - Implemented  
+✅ User Allowlist - Fetched from API  
+✅ No MongoDB dependencies  
+✅ No backend proxy required  
 
-**The Users section is fully integrated with the backend API!** 🚀
+**The admin panel calls the external Roamana API directly!** 🚀

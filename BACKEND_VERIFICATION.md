@@ -1,108 +1,112 @@
-# Backend Server - Verification Report ✅
+# Frontend-API Integration - Verification ✅
 
-## Current Status: **RUNNING AND WORKING**
+## Current Status: **FRONTEND CALLS EXTERNAL API DIRECTLY**
 
-### Server Information:
-- **Host**: localhost
-- **Port**: 3000
-- **URL**: http://localhost:3000
-- **Database**: MongoDB (Connected ✅)
-
-### Available Endpoints:
-
-#### 1. Health Check (Ping)
+### Architecture:
 ```
-GET http://localhost:3000/ping
-Response: { "message": "Pong! Server is running" }
-Status: ✅ WORKING
+Frontend (React) → External Roamana API
 ```
 
-#### 2. Users API
-```
-POST http://localhost:3000/api/users
-For creating new users in MongoDB
-```
+### API Configuration:
+- **External API**: https://devapi-roamania.codibex.com/api/v1
+- **Endpoint**: /admin/users
+- **Authentication**: Bearer Token (from .env.local)
+- **MongoDB**: ❌ Not used (removed)
+- **Backend Proxy**: ⚠️ Optional (available in `backend/` folder)
 
 ### How to Test:
 
-#### Option 1: Browser
-Open in your browser:
-```
-http://localhost:3000/ping
-```
-
-#### Option 2: cURL Command
+#### Option 1: Use Frontend
 ```bash
-curl http://localhost:3000/ping
+npm run dev
+# Open http://localhost:5173
+# Navigate to Users page
+# Try adding, editing, or deleting users
 ```
 
-#### Option 3: JavaScript/Fetch
-```javascript
-fetch('http://localhost:3000/ping')
-  .then(res => res.json())
-  .then(data => console.log(data))
+#### Option 2: Direct API Call
+```bash
+curl -X GET \
+  https://devapi-roamania.codibex.com/api/v1/admin/users \
+  -H "Authorization: Bearer <your-token>"
 ```
 
-### Backend Server Logs:
+### Environment Variables:
+
+Check `.env.local` in project root:
+```env
+VITE_API_BASE_URL=https://devapi-roamania.codibex.com/api/v1
+VITE_API_TOKEN=<your-token-here>
 ```
-MongoDB connected ✅
-REST API running on http://localhost:3000 ✅
-```
 
-### Next Steps:
+### Frontend Implementation:
 
-To integrate with your frontend, update `UsersPage.tsx` to send POST requests:
+The frontend already uses direct API calls:
 
-```javascript
-const handleAddUser = async () => {
-  // ... validation code ...
-  
-  try {
-    const response = await fetch('http://localhost:3000/api/users', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        firstName: 'John',
-        lastName: 'Doe',
-        email: 'john@example.com',
-        phone: '+1234567890',
-        birthDate: '1990-01-01',
-        gender: 'male'
-      })
-    });
-    
-    if (response.ok) {
-      const newUser = await response.json();
-      console.log('User created:', newUser);
-      showToast('User added successfully!');
-    }
-  } catch (error) {
-    console.error('Error adding user:', error);
-    showToast('Failed to add user');
-  }
-};
+```typescript
+// In src/pages/UsersPage.tsx
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+
+const getAuthHeaders = () => ({
+  'Content-Type': 'application/json',
+  'Authorization': `Bearer ${API_TOKEN}`,
+});
+
+// Direct API call
+const response = await fetch(`${API_BASE_URL}/admin/users`, {
+  method: 'GET',
+  headers: getAuthHeaders(),
+});
 ```
 
 ### Troubleshooting:
 
-If the server stops working:
-
-1. **Check if server is running:**
+1. **Check environment variables:**
    ```bash
-   lsof -i :3000
+   cat .env.local
+   # Should show VITE_API_BASE_URL and VITE_API_TOKEN
    ```
 
-2. **Restart server:**
+2. **Restart dev server if variables changed:**
    ```bash
-   node /Users/kunalrohilla/Documents/GitHub/ADMIN/backend/index.js
+   npm run dev
    ```
 
-3. **Check MongoDB connection:**
-   - Ensure MongoDB is running on `localhost:27017`
-   - Database: `testdb`
+3. **Check browser console for errors:**
+   - Open Developer Tools (F12)
+   - Look for API errors or missing env variables
+
+4. **Verify token is not expired:**
+   - JWT tokens expire
+   - Get fresh token from API provider
+   - Update `.env.local`
+
+### Optional: Backend Proxy
+
+If you encounter CORS issues:
+
+```bash
+cd backend
+npm install
+node index.js
+```
+
+Then update `.env.local`:
+```env
+VITE_API_BASE_URL=http://localhost:3000/api
+```
 
 ---
 
-✅ **Your backend is ready for integration!**
+## Key Changes from Previous Setup:
+
+- ❌ **Removed**: MongoDB dependency
+- ❌ **Removed**: Localhost fallbacks
+- ✅ **Added**: Direct external API calls
+- ✅ **Added**: Environment variable validation
+- ✅ **Kept**: Backend proxy (optional, in `backend/` folder)
+
+---
+
+✅ **Your frontend is ready and calling the external API directly!**

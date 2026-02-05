@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2, Search, Edit, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserPlus, Trash2, Search, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { storage } from '@/lib/storage';
 import type { TripUser } from '@/types';
@@ -61,14 +61,30 @@ export function UsersPage() {
     return dateString;
   };
 
-  const API_BASE = 'http://localhost:3000/api/users';
+  // API configuration from environment variables (required)
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+  
+  if (!API_BASE_URL || !API_TOKEN) {
+    console.error('❌ API configuration missing! Please check .env.local file.');
+  }
+  
+  const API_BASE = `${API_BASE_URL}/admin/users`;
 
-  // Fetch users from MongoDB (testdb) via Express API
+  // Helper to create authenticated headers
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_TOKEN}`,
+  });
+
+  // Fetch users from external API
   const fetchUsersFromAPI = async () => {
     setLoading(true);
     setApiError(null);
     try {
-      const response = await fetch(API_BASE);
+      const response = await fetch(API_BASE, {
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) {
         throw new Error('Failed to fetch users from API');
       }
@@ -155,7 +171,7 @@ export function UsersPage() {
     try {
       const response = await fetch(API_BASE, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
       if (!response.ok) {
@@ -190,7 +206,10 @@ export function UsersPage() {
   const handleDeleteUser = async (id: string, displayName: string) => {
     if (!confirm(`Are you sure you want to remove ${displayName}?`)) return;
     try {
-      const response = await fetch(`${API_BASE}/${id}`, { method: 'DELETE' });
+      const response = await fetch(`${API_BASE}/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
       if (!response.ok) throw new Error('Failed to delete on API');
       refreshTripUsers();
       showToast('User removed successfully!');
@@ -243,7 +262,7 @@ export function UsersPage() {
     try {
       const response = await fetch(`${API_BASE}/${manageUserId}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
       if (!response.ok) throw new Error('Failed to update on API');
@@ -280,7 +299,7 @@ export function UsersPage() {
         </div>
       )}
 
-      {/* Search Box + Add User + Refresh Button */}
+      {/* Search Box + Add User */}
       <div className="mb-4 flex items-center justify-between gap-4">
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
@@ -292,15 +311,6 @@ export function UsersPage() {
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
-        <Button
-          onClick={fetchUsersFromAPI}
-          disabled={loading}
-          className="h-10 px-4 text-sm font-medium rounded-full shadow-md text-white hover:opacity-90"
-          style={{ backgroundColor: '#06B3C4' }}
-        >
-          <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-          Refresh
-        </Button>
         <Dialog open={dialogOpen}         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {

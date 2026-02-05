@@ -16,7 +16,7 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useApp();
+  const { login, isLoadingAllowlist, allowlistError, retryFetchAllowlist } = useApp();
   const navigate = useNavigate();
 
   // Forgot password flow
@@ -126,7 +126,7 @@ export function LoginPage() {
       return;
     }
 
-    const success = login(email, password);
+    const success = await login(email, password);
     if (success) {
       navigate('/users');
     } else {
@@ -157,6 +157,35 @@ export function LoginPage() {
         </CardHeader>
         <CardContent>
           {forgotStep === 'login' && (
+            <>
+              {/* Allowlist Loading Indicator */}
+              {isLoadingAllowlist && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm flex items-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-800/30 border-t-blue-800 rounded-full animate-spin" />
+                  <span>Loading user authentication...</span>
+                </div>
+              )}
+
+              {/* Allowlist Error Banner */}
+              {allowlistError && !isLoadingAllowlist && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span>⚠️ {allowlistError}</span>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={retryFetchAllowlist}
+                      size="sm"
+                      className="h-7 px-3 text-xs text-white hover:opacity-90"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      Retry
+                    </Button>
+                  </div>
+                </div>
+              )}
+
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-gray-700 font-medium">Email</Label>
@@ -214,7 +243,7 @@ export function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || isLoadingAllowlist}
                 className="w-full shadow-lg transition-all duration-300 hover:opacity-90 hover:shadow-xl hover:scale-[1.02] font-medium"
                 style={tealButtonStyle}
               >
@@ -222,6 +251,11 @@ export function LoginPage() {
                   <div className="flex items-center gap-2" style={{ color: 'white' }}>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Signing in...
+                  </div>
+                ) : isLoadingAllowlist ? (
+                  <div className="flex items-center gap-2" style={{ color: 'white' }}>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Loading...
                   </div>
                 ) : (
                   <div className="flex items-center gap-2" style={{ color: 'white' }}>
@@ -231,6 +265,7 @@ export function LoginPage() {
                 )}
               </Button>
             </form>
+            </>
           )}
 
           {forgotStep === 'requestOtp' && (
