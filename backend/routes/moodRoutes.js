@@ -52,42 +52,80 @@ router.get("/get-all-moods", async (req, res) => {
 });
 
 // POST create mood
-router.post("/create-mood", upload.single("icon"), async (req, res) => {
+router.post(
+  "/create-mood",
+  upload.fields([
+    { name: "icon", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+  ]),
+  async (req, res) => {
   try {
-    const fetch = (await import("node-fetch")).default;
-    const url = `${API_BASE_URL}/moods/create-mood`;
-    const formData = new FormData();
+    const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
 
-    const moodName = req.body?.moodName || req.body?.name;
-    if (moodName) {
-      formData.append("moodName", moodName);
-      formData.append("name", moodName);
-    }
-    if (req.body?.color) {
-      formData.append("color", req.body.color);
-    }
+    if (isMultipart) {
+      const fetch = (await import("node-fetch")).default;
+      const url = `${API_BASE_URL}/moods/create-mood`;
+      const formData = new FormData();
 
-    if (req.file) {
-      formData.append("icon", req.file.buffer, {
-        filename: req.file.originalname,
-        contentType: req.file.mimetype,
+      const moodName = req.body?.moodName || req.body?.name;
+      if (moodName) {
+        formData.append("moodName", moodName);
+      }
+
+      if (req.body?.color) {
+        formData.append("color", req.body.color);
+      }
+
+      if (req.body?.isActive !== undefined) {
+        formData.append("isActive", String(req.body.isActive));
+      }
+
+      const iconFile = req.files?.icon?.[0];
+      if (iconFile) {
+        formData.append("icon", iconFile.buffer, {
+          filename: iconFile.originalname,
+          contentType: iconFile.mimetype,
+        });
+      }
+
+      const imageFile = req.files?.image?.[0];
+      if (imageFile) {
+        formData.append("image", imageFile.buffer, {
+          filename: imageFile.originalname,
+          contentType: imageFile.mimetype,
+        });
+      }
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          ...formData.getHeaders(),
+          Authorization: req.headers.authorization || `Bearer ${API_TOKEN}`,
+        },
+        body: formData,
       });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return res.status(response.status).json(data);
+      }
+      return res.json(data);
     }
 
-    const response = await fetch(url, {
+    const payload = { ...req.body };
+    if (payload.name && !payload.moodName) {
+      payload.moodName = payload.name;
+    }
+    delete payload.name;
+
+    const result = await proxyRequest(req, "/create-mood", {
       method: "POST",
-      headers: {
-        ...formData.getHeaders(),
-        Authorization: req.headers.authorization || `Bearer ${API_TOKEN}`,
-      },
-      body: formData,
+      body: JSON.stringify(payload),
     });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return res.status(response.status).json(data);
+    if (!result.ok) {
+      return res.status(result.status).json(result.data);
     }
-    res.json(data);
+    res.json(result.data);
   } catch (err) {
     console.error("POST /api/moods/create-mood error:", err);
     res.status(500).json({
@@ -95,45 +133,84 @@ router.post("/create-mood", upload.single("icon"), async (req, res) => {
       message: "Failed to create mood",
     });
   }
-});
+  }
+);
 
 // PUT update mood
-router.put("/update-mood/:id", upload.single("icon"), async (req, res) => {
+router.put(
+  "/update-mood/:id",
+  upload.fields([
+    { name: "icon", maxCount: 1 },
+    { name: "image", maxCount: 1 },
+  ]),
+  async (req, res) => {
   try {
-    const fetch = (await import("node-fetch")).default;
-    const url = `${API_BASE_URL}/moods/update-mood/${req.params.id}`;
-    const formData = new FormData();
+    const isMultipart = req.headers["content-type"]?.includes("multipart/form-data");
 
-    const moodName = req.body?.moodName || req.body?.name;
-    if (moodName) {
-      formData.append("moodName", moodName);
-      formData.append("name", moodName);
-    }
-    if (req.body?.color) {
-      formData.append("color", req.body.color);
-    }
+    if (isMultipart) {
+      const fetch = (await import("node-fetch")).default;
+      const url = `${API_BASE_URL}/moods/update-mood/${req.params.id}`;
+      const formData = new FormData();
 
-    if (req.file) {
-      formData.append("icon", req.file.buffer, {
-        filename: req.file.originalname,
-        contentType: req.file.mimetype,
+      const moodName = req.body?.moodName || req.body?.name;
+      if (moodName) {
+        formData.append("moodName", moodName);
+      }
+
+      if (req.body?.color) {
+        formData.append("color", req.body.color);
+      }
+
+      if (req.body?.isActive !== undefined) {
+        formData.append("isActive", String(req.body.isActive));
+      }
+
+      const iconFile = req.files?.icon?.[0];
+      if (iconFile) {
+        formData.append("icon", iconFile.buffer, {
+          filename: iconFile.originalname,
+          contentType: iconFile.mimetype,
+        });
+      }
+
+      const imageFile = req.files?.image?.[0];
+      if (imageFile) {
+        formData.append("image", imageFile.buffer, {
+          filename: imageFile.originalname,
+          contentType: imageFile.mimetype,
+        });
+      }
+
+      const response = await fetch(url, {
+        method: "PUT",
+        headers: {
+          ...formData.getHeaders(),
+          Authorization: req.headers.authorization || `Bearer ${API_TOKEN}`,
+        },
+        body: formData,
       });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return res.status(response.status).json(data);
+      }
+      return res.json(data);
     }
 
-    const response = await fetch(url, {
+    const payload = { ...req.body };
+    if (payload.name && !payload.moodName) {
+      payload.moodName = payload.name;
+    }
+    delete payload.name;
+
+    const result = await proxyRequest(req, `/update-mood/${req.params.id}` , {
       method: "PUT",
-      headers: {
-        ...formData.getHeaders(),
-        Authorization: req.headers.authorization || `Bearer ${API_TOKEN}`,
-      },
-      body: formData,
+      body: JSON.stringify(payload),
     });
-
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      return res.status(response.status).json(data);
+    if (!result.ok) {
+      return res.status(result.status).json(result.data);
     }
-    res.json(data);
+    res.json(result.data);
   } catch (err) {
     console.error("PUT /api/moods/update-mood error:", err);
     res.status(500).json({
@@ -141,7 +218,8 @@ router.put("/update-mood/:id", upload.single("icon"), async (req, res) => {
       message: "Failed to update mood",
     });
   }
-});
+  }
+);
 
 // DELETE mood
 router.delete("/delete-mood/:id", async (req, res) => {

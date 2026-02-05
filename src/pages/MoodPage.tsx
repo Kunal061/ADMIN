@@ -26,7 +26,8 @@ export function MoodPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newMoodName, setNewMoodName] = useState('');
   const [newMoodColor, setNewMoodColor] = useState('#000000');
-  const [newMoodIcon, setNewMoodIcon] = useState('');
+  const [newMoodIconFile, setNewMoodIconFile] = useState<File | null>(null);
+  const [newMoodIconPreview, setNewMoodIconPreview] = useState('');
   const [editMoodName, setEditMoodName] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,13 +35,12 @@ export function MoodPage() {
   // Combined manage dialog state
   const [activeActionMood, setActiveActionMood] = useState<any>(null);
   const [manageMoodName, setManageMoodName] = useState('');
-  const [manageMoodImage, setManageMoodImage] = useState('');
-  const [manageMoodUserInputImage, setManageMoodUserInputImage] = useState('');
+  const [manageMoodIconFile, setManageMoodIconFile] = useState<File | null>(null);
+  const [manageMoodIconPreview, setManageMoodIconPreview] = useState('');
   const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
   const manageMoodIconInputRef = useRef<HTMLInputElement>(null);
-  const manageMoodImageInputRef = useRef<HTMLInputElement>(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const API_TOKEN = import.meta.env.VITE_API_TOKEN;
@@ -48,6 +48,10 @@ export function MoodPage() {
 
   const getAuthHeaders = () => ({
     'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_TOKEN}`,
+  });
+
+  const getFormDataHeaders = () => ({
     'Authorization': `Bearer ${API_TOKEN}`,
   });
 
@@ -91,7 +95,7 @@ export function MoodPage() {
       alert('Please enter a mood name');
       return;
     }
-    if (!newMoodIcon) {
+    if (!newMoodIconFile) {
       alert('Please upload a mood icon');
       return;
     }
@@ -101,15 +105,18 @@ export function MoodPage() {
     }
 
     try {
-      const payload = {
-        moodName: newMoodName.trim(),
-        icon: newMoodIcon,
-        color: newMoodColor.trim(),
-      };
+      const formData = new FormData();
+  formData.append('moodName', newMoodName.trim());
+      if (newMoodColor.trim()) {
+        formData.append('color', newMoodColor.trim());
+      }
+      if (newMoodIconFile) {
+        formData.append('icon', newMoodIconFile);
+      }
       const response = await fetch(`${MOODS_BASE}/create-mood`, {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
+        headers: getFormDataHeaders(),
+        body: formData,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -117,8 +124,9 @@ export function MoodPage() {
       }
       showToast('Mood added successfully!');
       setNewMoodName('');
-  setNewMoodColor('#000000');
-      setNewMoodIcon('');
+      setNewMoodColor('#000000');
+      setNewMoodIconFile(null);
+      setNewMoodIconPreview('');
       setDialogOpen(false);
       fetchMoodsFromAPI();
     } catch (err) {
@@ -170,8 +178,8 @@ export function MoodPage() {
         if (activeActionMood?.id === id) {
           setActiveActionMood(null);
           setManageMoodName('');
-          setManageMoodImage('');
-          setManageMoodUserInputImage('');
+          setManageMoodIconPreview('');
+          setManageMoodIconFile(null);
           setManageMoodIsActive(false);
         }
         fetchMoodsFromAPI();
@@ -186,8 +194,8 @@ export function MoodPage() {
   const handleOpenManageDialog = (mood: any) => {
     setActiveActionMood(mood);
     setManageMoodName(mood.name);
-    setManageMoodImage(mood.image || '');
-    setManageMoodUserInputImage(mood.moodImage?.image ?? '');
+    setManageMoodIconPreview(mood.image || '');
+    setManageMoodIconFile(null);
     setManageMoodIsActive(mood.isActive);
   };
 
@@ -197,16 +205,16 @@ export function MoodPage() {
       return;
     }
     try {
-      const payload = {
-        moodName: manageMoodName.trim(),
-        icon: manageMoodImage || undefined,
-        image: manageMoodUserInputImage || undefined,
-        isActive: manageMoodIsActive,
-      };
+      const formData = new FormData();
+  formData.append('moodName', manageMoodName.trim());
+      formData.append('isActive', String(manageMoodIsActive));
+      if (manageMoodIconFile) {
+        formData.append('icon', manageMoodIconFile);
+      }
       const response = await fetch(`${MOODS_BASE}/update-mood/${activeActionMood.id}`, {
         method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
+        headers: getFormDataHeaders(),
+        body: formData,
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -215,8 +223,8 @@ export function MoodPage() {
       showToast('Mood updated successfully!');
       setActiveActionMood(null);
       setManageMoodName('');
-      setManageMoodImage('');
-      setManageMoodUserInputImage('');
+      setManageMoodIconPreview('');
+      setManageMoodIconFile(null);
       setManageMoodIsActive(false);
       fetchMoodsFromAPI();
     } catch (err) {
@@ -228,8 +236,8 @@ export function MoodPage() {
   const handleCancelManageMood = () => {
     setActiveActionMood(null);
     setManageMoodName('');
-    setManageMoodImage('');
-    setManageMoodUserInputImage('');
+    setManageMoodIconPreview('');
+    setManageMoodIconFile(null);
     setManageMoodIsActive(false);
   };
 
@@ -254,7 +262,8 @@ export function MoodPage() {
             if (!open) {
               setNewMoodName('');
               setNewMoodColor('#000000');
-              setNewMoodIcon('');
+              setNewMoodIconFile(null);
+              setNewMoodIconPreview('');
             }
           }}
         >
@@ -290,10 +299,10 @@ export function MoodPage() {
                 <Label htmlFor="add-mood-icon">Icon</Label>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {newMoodIcon ? (
+                      {newMoodIconPreview ? (
                       <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
                         <img
-                          src={newMoodIcon}
+                            src={newMoodIconPreview}
                           alt="Icon preview"
                           className="w-full h-full object-cover"
                         />
@@ -313,10 +322,11 @@ export function MoodPage() {
                           e.target.value = '';
                           return;
                         }
+                        setNewMoodIconFile(file);
                         const reader = new FileReader();
                         reader.onloadend = () => {
                           const result = reader.result;
-                          if (typeof result === 'string') setNewMoodIcon(result);
+                          if (typeof result === 'string') setNewMoodIconPreview(result);
                         };
                         reader.onerror = () => {
                           alert(IMAGE_LOAD_ERROR_MSG);
@@ -331,7 +341,7 @@ export function MoodPage() {
                     className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {newMoodIcon ? 'Change Icon' : 'Upload Icon'}
+                      {newMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
                   </label>
                 </div>
               </div>
@@ -360,7 +370,8 @@ export function MoodPage() {
                   setDialogOpen(false);
                   setNewMoodName('');
                   setNewMoodColor('#000000');
-                  setNewMoodIcon('');
+                  setNewMoodIconFile(null);
+                  setNewMoodIconPreview('');
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
@@ -573,10 +584,10 @@ export function MoodPage() {
                 <Label htmlFor="manage-mood-icon">Icon</Label>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {manageMoodImage ? (
+                    {manageMoodIconPreview ? (
                       <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
                         <img
-                          src={manageMoodImage}
+                          src={manageMoodIconPreview}
                           alt="Mood icon preview"
                           className="w-full h-full object-cover"
                         />
@@ -596,10 +607,11 @@ export function MoodPage() {
                           e.target.value = '';
                           return;
                         }
+                        setManageMoodIconFile(file);
                         const reader = new FileReader();
                         reader.onloadend = () => {
                           const result = reader.result;
-                          if (typeof result === 'string') setManageMoodImage(result);
+                          if (typeof result === 'string') setManageMoodIconPreview(result);
                         };
                         reader.onerror = () => {
                           alert(IMAGE_LOAD_ERROR_MSG);
@@ -614,57 +626,7 @@ export function MoodPage() {
                     className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {manageMoodImage ? 'Change Icon' : 'Upload Icon'}
-                  </label>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>User input image</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {manageMoodUserInputImage ? (
-                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={manageMoodUserInputImage}
-                          alt="User input preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={manageMoodImageInputRef}
-                      id={`manage-user-input-image-${activeActionMood.id}`}
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                          alert('Image is too large. Please choose an image under 5 MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setManageMoodUserInputImage(result);
-                        };
-                        reader.onerror = () => {
-                          alert(IMAGE_LOAD_ERROR_MSG);
-                        };
-                        reader.readAsDataURL(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  <label
-                    htmlFor={`manage-user-input-image-${activeActionMood.id}`}
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    {manageMoodUserInputImage ? 'Change image' : 'Upload image'}
+                    {manageMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
                   </label>
                 </div>
               </div>
