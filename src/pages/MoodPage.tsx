@@ -28,6 +28,8 @@ export function MoodPage() {
   const [newMoodColor, setNewMoodColor] = useState('#000000');
   const [newMoodIconFile, setNewMoodIconFile] = useState<File | null>(null);
   const [newMoodIconPreview, setNewMoodIconPreview] = useState('');
+  const [newMoodUserInputFile, setNewMoodUserInputFile] = useState<File | null>(null);
+  const [newMoodUserInputPreview, setNewMoodUserInputPreview] = useState('');
   const [editMoodName, setEditMoodName] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -41,6 +43,7 @@ export function MoodPage() {
   const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
+  const addMoodUserInputImageRef = useRef<HTMLInputElement>(null);
   const manageMoodIconInputRef = useRef<HTMLInputElement>(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -115,6 +118,9 @@ export function MoodPage() {
       if (newMoodIconFile) {
         formData.append('icon', newMoodIconFile);
       }
+      if (newMoodUserInputFile) {
+        formData.append('image', newMoodUserInputFile);
+      }
       const response = await fetch(`${MOODS_BASE}/create-mood`, {
         method: 'POST',
         headers: getFormDataHeaders(),
@@ -129,6 +135,8 @@ export function MoodPage() {
       setNewMoodColor('#000000');
       setNewMoodIconFile(null);
       setNewMoodIconPreview('');
+  setNewMoodUserInputFile(null);
+  setNewMoodUserInputPreview('');
       setDialogOpen(false);
       fetchMoodsFromAPI();
     } catch (err) {
@@ -271,6 +279,8 @@ export function MoodPage() {
               setNewMoodColor('#000000');
               setNewMoodIconFile(null);
               setNewMoodIconPreview('');
+              setNewMoodUserInputFile(null);
+              setNewMoodUserInputPreview('');
             }
           }}
         >
@@ -370,6 +380,57 @@ export function MoodPage() {
                   />
                 </div>
               </div>
+
+              <div className="space-y-2">
+                <Label>User input image</Label>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {newMoodUserInputPreview ? (
+                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
+                        <img
+                          src={newMoodUserInputPreview}
+                          alt="User input preview"
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : null}
+                    <input
+                      ref={addMoodUserInputImageRef}
+                      id="add-mood-user-input-image"
+                      type="file"
+                      accept="image/*"
+                      className="visually-hidden-input"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                          alert('Image is too large. Please choose an image under 5 MB.');
+                          e.target.value = '';
+                          return;
+                        }
+                        setNewMoodUserInputFile(file);
+                        const reader = new FileReader();
+                        reader.onloadend = () => {
+                          const result = reader.result;
+                          if (typeof result === 'string') setNewMoodUserInputPreview(result);
+                        };
+                        reader.onerror = () => {
+                          alert(IMAGE_LOAD_ERROR_MSG);
+                        };
+                        reader.readAsDataURL(file);
+                        e.target.value = '';
+                      }}
+                    />
+                  </div>
+                  <label
+                    htmlFor="add-mood-user-input-image"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    {newMoodUserInputPreview ? 'Change image' : 'Upload image'}
+                  </label>
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button
@@ -379,6 +440,8 @@ export function MoodPage() {
                   setNewMoodColor('#000000');
                   setNewMoodIconFile(null);
                   setNewMoodIconPreview('');
+                  setNewMoodUserInputFile(null);
+                  setNewMoodUserInputPreview('');
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}

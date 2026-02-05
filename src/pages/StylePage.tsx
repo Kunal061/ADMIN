@@ -124,6 +124,11 @@ export function StylePage() {
     setNewStyleImageFile(null);
   };
 
+  const clearAddStyleMedia = () => {
+    clearIconPreview();
+    clearImagePreview();
+  };
+
   const handleCreateStyle = async () => {
     if (!newStyleName.trim()) {
       alert('Please enter a style name');
@@ -148,8 +153,7 @@ export function StylePage() {
       showToast('Style added successfully!');
       fetchStylesFromAPI();
       setNewStyleName('');
-      clearIconPreview();
-      clearImagePreview();
+      clearAddStyleMedia();
       setDialogOpen(false);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create style';
@@ -302,8 +306,7 @@ export function StylePage() {
             setDialogOpen(open);
             if (!open) {
               setNewStyleName('');
-              clearIconPreview();
-              clearImagePreview();
+              clearAddStyleMedia();
             }
           }}
         >
@@ -376,6 +379,7 @@ export function StylePage() {
                   </label>
                 </div>
               </div>
+
               <div className="space-y-2">
                 <Label>User input image</Label>
                 <div className="flex items-center justify-between">
@@ -384,14 +388,14 @@ export function StylePage() {
                       <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
                         <img
                           src={newStyleImagePreview}
-                          alt="Preview"
+                          alt="User input preview"
                           className="w-full h-full object-cover"
                         />
                       </div>
                     ) : null}
                     <input
                       ref={addStyleImageInputRef}
-                      id="add-style-image"
+                      id="add-style-user-input-image"
                       type="file"
                       accept="image/*"
                       className="visually-hidden-input"
@@ -409,11 +413,11 @@ export function StylePage() {
                     />
                   </div>
                   <label
-                    htmlFor="add-style-image"
+                    htmlFor="add-style-user-input-image"
                     className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {newStyleImagePreview ? 'Change image' : 'Choose image'}
+                    {newStyleImagePreview ? 'Change image' : 'Upload image'}
                   </label>
                 </div>
               </div>
@@ -423,8 +427,7 @@ export function StylePage() {
                 onClick={() => {
                   setDialogOpen(false);
                   setNewStyleName('');
-                  clearIconPreview();
-                  clearImagePreview();
+                  clearAddStyleMedia();
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
