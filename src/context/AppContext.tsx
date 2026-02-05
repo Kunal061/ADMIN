@@ -26,7 +26,6 @@ interface AppContextType {
 
   // Styles
   styles: StyleOption[];
-  toggleStyle: (id: string) => void;
   addStyle: (style: Omit<StyleOption, 'id'>) => void;
   updateStyle: (id: string, style: Partial<StyleOption>) => void;
   deleteStyle: (id: string) => void;
@@ -59,7 +58,6 @@ function mergeStyles(defaults: StyleOption[], userStyles: StyleOption[] | undefi
       ...defaultStyle,
       ...(existing || {}),
       image: existing?.image ?? defaultStyle.image,
-      styleImage: existing?.styleImage ?? defaultStyle.styleImage,
     };
   });
   const custom = list.filter((s) => !defaults.some((d) => d.id === s.id));
@@ -339,18 +337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  const toggleStyle = (id: string) => {
-    setStyles(prev =>
-      {
-        const next = prev.map(style =>
-          style.id === id ? { ...style, isActive: !style.isActive } : style
-        );
-        persistUserData({ styles: next });
-        return next;
-      }
-    );
-  };
-
   const addStyle = (style: Omit<StyleOption, 'id'>) => {
     const newStyle: StyleOption = {
       ...style,
@@ -494,7 +480,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addActivity,
         refreshTripsFromStorage,
         styles,
-        toggleStyle,
         addStyle,
         updateStyle,
         deleteStyle,

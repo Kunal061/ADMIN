@@ -52,7 +52,7 @@ export function MoodPage() {
   });
 
   const mapApiMood = (mood: any) => ({
-    id: mood.id || mood._id,
+    id: String(mood.id || mood._id),
     name: mood.moodName || mood.name || '',
     image: mood.icon || mood.image || '',
     moodImage: mood.image ? { image: mood.image } : undefined,
@@ -412,11 +412,10 @@ export function MoodPage() {
             <table className="w-full table-fixed">
               <thead>
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
-                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[12%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Status</th>
-                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Preview</th>
-                  <th className="w-[18%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
+                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
+                  <th className="w-[15%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Status</th>
+                  <th className="w-[20%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -430,12 +429,12 @@ export function MoodPage() {
                         borderColor: '#EEF0F1',
                       }}
                     >
-                      <td className="w-[20%] py-4 px-6 text-left">
+                      <td className="w-[25%] py-4 px-6 text-left">
                         <div className="font-medium text-gray-900">
                           {mood.name}
                         </div>
                       </td>
-                      <td className="w-[15%] py-4 px-6 text-left">
+                      <td className="w-[20%] py-4 px-6 text-left">
                         {mood.image ? (
                           <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
                             <img
@@ -448,7 +447,7 @@ export function MoodPage() {
                           <span className="text-sm text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="w-[12%] py-3 px-6 text-center">
+                      <td className="w-[15%] py-3 px-6 text-center">
                         <span
                           className={`inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-full text-xs font-medium text-center ${
                             isActive
@@ -460,20 +459,7 @@ export function MoodPage() {
                           {isActive ? 'Active' : 'Inactive'}
                         </span>
                       </td>
-                      <td className="w-[15%] py-3 px-6 text-left">
-                        {mood.moodImage?.image ? (
-                          <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                            <img
-                              src={mood.moodImage.image}
-                              alt={`${mood.name} preview`}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="w-[18%] py-3 px-6 text-center">
+                      <td className="w-[20%] py-3 px-6 text-center">
                         <div className="flex items-center gap-1.5 justify-center">
                           <Button
                             size="sm"
@@ -485,7 +471,7 @@ export function MoodPage() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleDeleteMood(mood.id, mood.name)}
+                            onClick={() => handleDeleteMood(String(mood.id), mood.name)}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
                             style={{ backgroundColor: '#06B3C4' }}
                           >

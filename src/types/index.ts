@@ -61,18 +61,11 @@ export interface Activity {
   location: string;
 }
 
-export interface StyleImage {
-  image: string;
-}
-
 export interface StyleOption {
   id: string;
   name: string;
-  description: string;
-  icon: string;
+  icon?: string;
   image?: string;
-  isActive: boolean;
-  styleImage?: StyleImage;
 }
 
 export interface MoodImage {

@@ -77,7 +77,7 @@ export function UsersPage() {
 
   // API configuration from environment variables (required)
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
-  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN;
   
   if (!API_BASE_URL || !API_TOKEN) {
     console.error('❌ API configuration missing! Please check .env.local file.');
@@ -152,7 +152,7 @@ export function UsersPage() {
   });
 
   const mapApiStyle = (style: any) => ({
-    id: style.id || style._id,
+    id: String(style.id || style._id),
     name: style.styleName || style.name || '',
     icon: style.icon || style.image || '',
     color: style.color || '#06B3C4',
@@ -432,6 +432,9 @@ export function UsersPage() {
         </div>
         <Dialog open={dialogOpen}         onOpenChange={(open) => {
           setDialogOpen(open);
+          if (open) {
+            fetchStylesFromAPI();
+          }
           if (!open) {
             setNewFirstName('');
             setNewLastName('');
@@ -622,47 +625,6 @@ export function UsersPage() {
                   )}
                 </div>
               </div>
-              {/* Style chips selection replaces the old text input */}
-              <div className="space-y-2">
-                <Label htmlFor="emergency-name">Emergency Contact Name</Label>
-                <Input
-                  id="emergency-name"
-                  type="text"
-                  placeholder="Contact name"
-                  value={newEmergencyName}
-                  onChange={(e) => setNewEmergencyName(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emergency-relationship">Emergency Relationship</Label>
-                <Input
-                  id="emergency-relationship"
-                  type="text"
-                  placeholder="Relationship"
-                  value={newEmergencyRelationship}
-                  onChange={(e) => setNewEmergencyRelationship(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
-                <Input
-                  id="emergency-contact"
-                  type="tel"
-                  placeholder="Contact number"
-                  value={newEmergencyContactNo}
-                  onChange={(e) => setNewEmergencyContactNo(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="emergency-email">Emergency Email</Label>
-                <Input
-                  id="emergency-email"
-                  type="email"
-                  placeholder="contact@email.com"
-                  value={newEmergencyEmail}
-                  onChange={(e) => setNewEmergencyEmail(e.target.value)}
-                />
-              </div>
               <div className="space-y-2">
                 <Label>Select Styles</Label>
                 <div className="flex flex-wrap items-center gap-2 pb-2">
@@ -712,6 +674,51 @@ export function UsersPage() {
                       })}
                     </div>
                   )}
+                </div>
+              </div>
+              <div className="border border-[#E5E7EB] rounded-lg p-4 space-y-4">
+                <div className="text-sm font-semibold text-gray-700 tracking-wide text-center">
+                  EMERGENCY DETAILS
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergency-name">Emergency Contact Name</Label>
+                  <Input
+                    id="emergency-name"
+                    type="text"
+                    placeholder="Contact name"
+                    value={newEmergencyName}
+                    onChange={(e) => setNewEmergencyName(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergency-relationship">Emergency Relationship</Label>
+                  <Input
+                    id="emergency-relationship"
+                    type="text"
+                    placeholder="Relationship"
+                    value={newEmergencyRelationship}
+                    onChange={(e) => setNewEmergencyRelationship(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
+                  <Input
+                    id="emergency-contact"
+                    type="tel"
+                    placeholder="Contact number"
+                    value={newEmergencyContactNo}
+                    onChange={(e) => setNewEmergencyContactNo(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="emergency-email">Emergency Email</Label>
+                  <Input
+                    id="emergency-email"
+                    type="email"
+                    placeholder="contact@email.com"
+                    value={newEmergencyEmail}
+                    onChange={(e) => setNewEmergencyEmail(e.target.value)}
+                  />
                 </div>
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}

@@ -16,15 +16,17 @@ import { useState, useRef, useEffect } from 'react';
 import type { StyleOption } from '@/types';
 
 export function StylePage() {
-  const { styles, addStyle, updateStyle, deleteStyle, showToast } = useApp();
+  const { styles, showToast } = useApp();
   const [displayStyles, setDisplayStyles] = useState<StyleOption[]>(styles);
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   const [editingStyle, setEditingStyle] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newStyleName, setNewStyleName] = useState('');
-  const [newStyleIcon, setNewStyleIcon] = useState('');
-  const [newStyleImage, setNewStyleImage] = useState('');
+  const [newStyleIconFile, setNewStyleIconFile] = useState<File | null>(null);
+  const [newStyleIconPreview, setNewStyleIconPreview] = useState('');
+  const [newStyleImageFile, setNewStyleImageFile] = useState<File | null>(null);
+  const [newStyleImagePreview, setNewStyleImagePreview] = useState('');
   const [editStyleName, setEditStyleName] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +36,8 @@ export function StylePage() {
   const [manageStyleName, setManageStyleName] = useState('');
   const [manageStyleImage, setManageStyleImage] = useState('');
   const [manageStyleUserInputImage, setManageStyleUserInputImage] = useState('');
-  const [manageStyleIsActive, setManageStyleIsActive] = useState(false);
+  const [manageStyleIconFile, setManageStyleIconFile] = useState<File | null>(null);
+  const [manageStyleImageFile, setManageStyleImageFile] = useState<File | null>(null);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
   const API_TOKEN = import.meta.env.VITE_API_TOKEN;
@@ -46,13 +49,10 @@ export function StylePage() {
   });
 
   const mapApiStyle = (style: any): StyleOption => ({
-    id: style.id || style._id,
+    id: String(style.id || style._id),
     name: style.styleName || style.name || '',
-    description: style.description || '',
-    icon: style.icon || style.image || '',
+    icon: style.icon || '',
     image: style.image || '',
-    isActive: style.isActive ?? true,
-    styleImage: style.image ? { image: style.image } : undefined,
   });
 
   const fetchStylesFromAPI = async () => {
@@ -88,65 +88,126 @@ export function StylePage() {
   const manageStyleIconInputRef = useRef<HTMLInputElement>(null);
   const manageStyleImageInputRef = useRef<HTMLInputElement>(null);
 
-  const handleIconUpload = (styleId: string, file: File | null) => {
+  const handleIconUpload = async (styleId: string, file: File | null) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        updateStyle(styleId, { image: result });
-        showToast('Style updated successfully!');
+    const formData = new FormData();
+    formData.append('icon', file);
+    try {
+      const response = await fetch(`${STYLES_BASE}/update-style/${styleId}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${API_TOKEN}`,
+        },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to update style');
       }
-    };
-    reader.readAsDataURL(file);
+      showToast('Style updated successfully!');
+      fetchStylesFromAPI();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update style';
+      showToast(message, 'error');
+    }
   };
 
-  const handleCreateStyle = () => {
+  const clearIconPreview = () => {
+    if (newStyleIconPreview) URL.revokeObjectURL(newStyleIconPreview);
+    setNewStyleIconPreview('');
+    setNewStyleIconFile(null);
+  };
+
+  const clearImagePreview = () => {
+    if (newStyleImagePreview) URL.revokeObjectURL(newStyleImagePreview);
+    setNewStyleImagePreview('');
+    setNewStyleImageFile(null);
+  };
+
+  const handleCreateStyle = async () => {
     if (!newStyleName.trim()) {
       alert('Please enter a style name');
       return;
     }
-    addStyle({
-      name: newStyleName.trim(),
-      description: '',
-      icon: '',
-      isActive: true,
-      ...(newStyleIcon ? { image: newStyleIcon } : {}),
-      ...(newStyleImage ? { styleImage: { image: newStyleImage } } : {}),
-    });
-    showToast('Style added successfully!');
-    fetchStylesFromAPI();
-    setNewStyleName('');
-    setNewStyleIcon('');
-    setNewStyleImage('');
-    setDialogOpen(false);
+    const formData = new FormData();
+    formData.append('name', newStyleName.trim());
+    if (newStyleIconFile) formData.append('icon', newStyleIconFile);
+    if (newStyleImageFile) formData.append('image', newStyleImageFile);
+    try {
+      const response = await fetch(`${STYLES_BASE}/create-style`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${API_TOKEN}`,
+        },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to create style');
+      }
+      showToast('Style added successfully!');
+      fetchStylesFromAPI();
+      setNewStyleName('');
+      clearIconPreview();
+      clearImagePreview();
+      setDialogOpen(false);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create style';
+      showToast(message, 'error');
+    }
   };
 
-  const handleUpdateStyle = () => {
+  const handleUpdateStyle = async () => {
     if (!editingStyle || !editStyleName.trim()) {
       alert('Please enter a style name');
       return;
     }
-    updateStyle(editingStyle.id, {
-      name: editStyleName.trim(),
-    });
-    showToast('Style updated successfully!');
-    fetchStylesFromAPI();
-    setEditingStyle(null);
-    setEditStyleName('');
+    try {
+      const response = await fetch(`${STYLES_BASE}/update-style/${editingStyle.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          name: editStyleName.trim(),
+          icon: editingStyle.icon || undefined,
+          image: editingStyle.image || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to update style');
+      }
+      showToast('Style updated successfully!');
+      fetchStylesFromAPI();
+      setEditingStyle(null);
+      setEditStyleName('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update style';
+      showToast(message, 'error');
+    }
   };
 
-  const handleDeleteStyle = (id: string, name: string) => {
+  const handleDeleteStyle = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete "${name}"?`)) {
-      deleteStyle(id);
-      showToast('Style deleted successfully!');
-  fetchStylesFromAPI();
-      if (activeActionStyle?.id === id) {
-        setActiveActionStyle(null);
-        setManageStyleName('');
-        setManageStyleImage('');
-        setManageStyleUserInputImage('');
-        setManageStyleIsActive(false);
+      try {
+        const response = await fetch(`${STYLES_BASE}/delete-style/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || 'Failed to delete style');
+        }
+        showToast('Style deleted successfully!');
+        fetchStylesFromAPI();
+        if (activeActionStyle?.id === id) {
+          setActiveActionStyle(null);
+          setManageStyleName('');
+          setManageStyleImage('');
+          setManageStyleUserInputImage('');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete style';
+        showToast(message, 'error');
       }
     }
   };
@@ -155,48 +216,70 @@ export function StylePage() {
   const handleOpenManageDialog = (style: any) => {
     setActiveActionStyle(style);
     setManageStyleName(style.name);
-    setManageStyleImage(style.image || '');
-    setManageStyleUserInputImage(style.styleImage?.image ?? '');
-    setManageStyleIsActive(style.isActive);
+    if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
+    if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
+    setManageStyleImage(style.icon || '');
+    setManageStyleUserInputImage(style.image || '');
+    setManageStyleIconFile(null);
+    setManageStyleImageFile(null);
   };
 
   const handleManageIconUpload = (file: File | null) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        setManageStyleImage(result);
-      }
-    };
-    reader.readAsDataURL(file);
+    const previewUrl = URL.createObjectURL(file);
+    setManageStyleImage((prev) => {
+      if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return previewUrl;
+    });
+    setManageStyleIconFile(file);
   };
 
-  const handleSaveManageStyle = () => {
+  const handleSaveManageStyle = async () => {
     if (!activeActionStyle || !manageStyleName.trim()) {
       alert('Please enter a style name');
       return;
     }
-    updateStyle(activeActionStyle.id, {
-      name: manageStyleName.trim(),
-      image: manageStyleImage,
-      isActive: manageStyleIsActive,
-      styleImage: manageStyleUserInputImage ? { image: manageStyleUserInputImage } : undefined,
-    });
-    showToast('Style updated successfully!');
-    setActiveActionStyle(null);
-    setManageStyleName('');
-    setManageStyleImage('');
-    setManageStyleUserInputImage('');
-    setManageStyleIsActive(false);
+    const formData = new FormData();
+    formData.append('name', manageStyleName.trim());
+    if (manageStyleIconFile) formData.append('icon', manageStyleIconFile);
+    if (manageStyleImageFile) formData.append('image', manageStyleImageFile);
+    try {
+      const response = await fetch(`${STYLES_BASE}/update-style/${activeActionStyle.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${API_TOKEN}`,
+        },
+        body: formData,
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to update style');
+      }
+      showToast('Style updated successfully!');
+      fetchStylesFromAPI();
+      setActiveActionStyle(null);
+      setManageStyleName('');
+      if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
+      if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
+      setManageStyleImage('');
+      setManageStyleUserInputImage('');
+      setManageStyleIconFile(null);
+      setManageStyleImageFile(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update style';
+      showToast(message, 'error');
+    }
   };
 
   const handleCancelManageStyle = () => {
     setActiveActionStyle(null);
     setManageStyleName('');
+    if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
+    if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
     setManageStyleImage('');
     setManageStyleUserInputImage('');
-    setManageStyleIsActive(false);
+    setManageStyleIconFile(null);
+    setManageStyleImageFile(null);
   };
 
   return (
@@ -207,7 +290,7 @@ export function StylePage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
-            placeholder="Search styles by name or status..."
+            placeholder="Search styles by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -219,8 +302,8 @@ export function StylePage() {
             setDialogOpen(open);
             if (!open) {
               setNewStyleName('');
-              setNewStyleIcon('');
-              setNewStyleImage('');
+              clearIconPreview();
+              clearImagePreview();
             }
           }}
         >
@@ -256,10 +339,10 @@ export function StylePage() {
                 <Label>Icon</Label>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {newStyleIcon ? (
+                    {newStyleIconPreview ? (
                       <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
                         <img
-                          src={newStyleIcon}
+                          src={newStyleIconPreview}
                           alt="Icon preview"
                           className="w-full h-full object-cover"
                         />
@@ -274,12 +357,12 @@ export function StylePage() {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setNewStyleIcon(result);
-                        };
-                        reader.readAsDataURL(file);
+                        const previewUrl = URL.createObjectURL(file);
+                        setNewStyleIconPreview((prev) => {
+                          if (prev) URL.revokeObjectURL(prev);
+                          return previewUrl;
+                        });
+                        setNewStyleIconFile(file);
                         e.target.value = '';
                       }}
                     />
@@ -289,7 +372,7 @@ export function StylePage() {
                     className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {newStyleIcon ? 'Change Icon' : 'Upload Icon'}
+                    {newStyleIconPreview ? 'Change Icon' : 'Upload Icon'}
                   </label>
                 </div>
               </div>
@@ -297,10 +380,10 @@ export function StylePage() {
                 <Label>User input image</Label>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {newStyleImage ? (
+                    {newStyleImagePreview ? (
                       <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
                         <img
-                          src={newStyleImage}
+                          src={newStyleImagePreview}
                           alt="Preview"
                           className="w-full h-full object-cover"
                         />
@@ -315,12 +398,12 @@ export function StylePage() {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setNewStyleImage(result);
-                        };
-                        reader.readAsDataURL(file);
+                        const previewUrl = URL.createObjectURL(file);
+                        setNewStyleImagePreview((prev) => {
+                          if (prev) URL.revokeObjectURL(prev);
+                          return previewUrl;
+                        });
+                        setNewStyleImageFile(file);
                         e.target.value = '';
                       }}
                     />
@@ -330,7 +413,7 @@ export function StylePage() {
                     className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {newStyleImage ? 'Change image' : 'Choose image'}
+                    {newStyleImagePreview ? 'Change image' : 'Choose image'}
                   </label>
                 </div>
               </div>
@@ -340,8 +423,8 @@ export function StylePage() {
                 onClick={() => {
                   setDialogOpen(false);
                   setNewStyleName('');
-                  setNewStyleIcon('');
-                  setNewStyleImage('');
+                  clearIconPreview();
+                  clearImagePreview();
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
@@ -371,10 +454,8 @@ export function StylePage() {
           const query = searchQuery.toLowerCase().trim();
           const filteredStyles = !query
             ? displayStyles
-            : displayStyles.filter(
-                (style) =>
-                  style.name.toLowerCase().includes(query) ||
-                  (style.isActive ? 'active' : 'inactive').includes(query)
+            : displayStyles.filter((style) =>
+                style.name.toLowerCase().includes(query)
               );
           return filteredStyles.length === 0 ? (
             <div className="text-center py-12">
@@ -391,16 +472,14 @@ export function StylePage() {
             <table className="w-full table-fixed">
               <thead>
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
-                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[12%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Status</th>
-                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Preview</th>
-                  <th className="w-[18%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
+                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
+                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Image</th>
+                  <th className="w-[20%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {filteredStyles.map((style) => {
-                  const isActive = style.isActive;
                   return (
                     <tr
                       key={style.id}
@@ -409,17 +488,17 @@ export function StylePage() {
                         borderColor: '#EEF0F1',
                       }}
                     >
-                      <td className="w-[20%] py-4 px-6 text-left">
+                      <td className="w-[25%] py-4 px-6 text-left">
                         <div className="font-medium text-gray-900">
                           {style.name}
                         </div>
                       </td>
-                      <td className="w-[15%] py-4 px-6 text-left">
+                      <td className="w-[20%] py-4 px-6 text-left">
                         <div className="flex items-center justify-start gap-3">
-                          {style.image ? (
+                          {style.icon ? (
                             <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
                               <img
-                                src={style.image}
+                                src={style.icon}
                                 alt={style.name}
                                 className="w-full h-full object-cover"
                               />
@@ -436,23 +515,11 @@ export function StylePage() {
                           />
                         </div>
                       </td>
-                      <td className="w-[12%] py-3 px-6 text-center">
-                        <span
-                          className={`inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-full text-xs font-medium text-center ${
-                            isActive
-                              ? 'text-white'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                          style={isActive ? { backgroundColor: '#06B3C4' } : undefined}
-                        >
-                          {isActive ? 'Active' : 'Inactive'}
-                        </span>
-                      </td>
-                      <td className="w-[15%] py-3 px-6 text-left">
-                        {style.styleImage?.image ? (
+                      <td className="w-[25%] py-3 px-6 text-left">
+                        {style.image ? (
                           <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
                             <img
-                              src={style.styleImage.image}
+                              src={style.image}
                               alt={`${style.name} preview`}
                               className="w-full h-full object-cover"
                             />
@@ -461,7 +528,7 @@ export function StylePage() {
                           <span className="text-sm text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="w-[18%] py-3 px-6 text-center">
+                      <td className="w-[20%] py-3 px-6 text-center">
                         <div className="flex items-center gap-1.5 justify-center">
                           <Button
                             size="sm"
@@ -473,7 +540,7 @@ export function StylePage() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleDeleteStyle(style.id, style.name)}
+                            onClick={() => handleDeleteStyle(String(style.id), style.name)}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
                             style={{ backgroundColor: '#06B3C4' }}
                           >
@@ -557,7 +624,7 @@ export function StylePage() {
             <DialogHeader>
               <DialogTitle className="font-heading">Manage Style</DialogTitle>
               <DialogDescription>
-                Update style name, icon, and status.
+                Update style name, icon, and image.
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
@@ -628,12 +695,12 @@ export function StylePage() {
                       onChange={(e) => {
                         const file = e.target.files?.[0];
                         if (!file) return;
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setManageStyleUserInputImage(result);
-                        };
-                        reader.readAsDataURL(file);
+                        const previewUrl = URL.createObjectURL(file);
+                        setManageStyleUserInputImage((prev) => {
+                          if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+                          return previewUrl;
+                        });
+                        setManageStyleImageFile(file);
                         e.target.value = '';
                       }}
                     />
@@ -648,18 +715,6 @@ export function StylePage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="manage-style-status">Status</Label>
-                <select
-                  id="manage-style-status"
-                  value={manageStyleIsActive ? 'Active' : 'Inactive'}
-                  onChange={(e) => setManageStyleIsActive(e.target.value === 'Active')}
-                  className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
             </div>
             <DialogFooter className="flex flex-row justify-between w-full">
               <Button
