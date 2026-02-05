@@ -76,10 +76,6 @@ router.post(
         formData.append("color", req.body.color);
       }
 
-      if (req.body?.isActive !== undefined) {
-        formData.append("isActive", String(req.body.isActive));
-      }
-
       const iconFile = req.files?.icon?.[0];
       if (iconFile) {
         formData.append("icon", iconFile.buffer, {

@@ -37,6 +37,7 @@ export function MoodPage() {
   const [manageMoodName, setManageMoodName] = useState('');
   const [manageMoodIconFile, setManageMoodIconFile] = useState<File | null>(null);
   const [manageMoodIconPreview, setManageMoodIconPreview] = useState('');
+  const [manageMoodColor, setManageMoodColor] = useState('#000000');
   const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
@@ -60,6 +61,7 @@ export function MoodPage() {
     name: mood.moodName || mood.name || '',
     image: mood.icon || mood.image || '',
     moodImage: mood.image ? { image: mood.image } : undefined,
+    color: mood.color || '#000000',
     isActive: mood.isActive ?? true,
   });
 
@@ -196,6 +198,7 @@ export function MoodPage() {
     setManageMoodName(mood.name);
     setManageMoodIconPreview(mood.image || '');
     setManageMoodIconFile(null);
+    setManageMoodColor(mood.color || '#000000');
     setManageMoodIsActive(mood.isActive);
   };
 
@@ -207,7 +210,9 @@ export function MoodPage() {
     try {
       const formData = new FormData();
   formData.append('moodName', manageMoodName.trim());
-      formData.append('isActive', String(manageMoodIsActive));
+      if (manageMoodColor.trim()) {
+        formData.append('color', manageMoodColor.trim());
+      }
       if (manageMoodIconFile) {
         formData.append('icon', manageMoodIconFile);
       }
@@ -225,6 +230,7 @@ export function MoodPage() {
       setManageMoodName('');
       setManageMoodIconPreview('');
       setManageMoodIconFile(null);
+  setManageMoodColor('#000000');
       setManageMoodIsActive(false);
       fetchMoodsFromAPI();
     } catch (err) {
@@ -238,6 +244,7 @@ export function MoodPage() {
     setManageMoodName('');
     setManageMoodIconPreview('');
     setManageMoodIconFile(null);
+    setManageMoodColor('#000000');
     setManageMoodIsActive(false);
   };
 
@@ -628,6 +635,25 @@ export function MoodPage() {
                   >
                     {manageMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
                   </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manage-mood-color">Color</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="manage-mood-color"
+                    type="color"
+                    value={manageMoodColor}
+                    onChange={(e) => setManageMoodColor(e.target.value)}
+                    className="h-9 w-16 cursor-pointer rounded border border-gray-200 bg-white"
+                  />
+                  <Input
+                    value={manageMoodColor}
+                    onChange={(e) => setManageMoodColor(e.target.value)}
+                    placeholder="#FFCAEC"
+                    className="flex-1"
+                  />
                 </div>
               </div>
 
