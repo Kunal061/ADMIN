@@ -20,12 +20,17 @@ const proxyRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}/admin/users${endpoint}`;
   
   try {
+    const headers = {
+      ...getAuthHeaders(),
+      ...(options.headers || {}),
+    };
+    delete headers.Authorization;
+    delete headers.authorization;
+    headers.Authorization = `Bearer ${API_TOKEN}`;
+
     const response = await fetch(url, {
       ...options,
-      headers: {
-        ...getAuthHeaders(),
-        ...options.headers,
-      },
+      headers,
     });
 
     const data = await response.json();
@@ -88,9 +93,17 @@ router.get("/:id", async (req, res) => {
 // POST create user
 router.post("/", async (req, res) => {
   try {
+    const ensurePassword = (body) => {
+      if (body?.password) return body;
+      return {
+        ...body,
+        password: "Test@123",
+      };
+    };
+
     const result = await proxyRequest("", {
       method: "POST",
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(ensurePassword(req.body)),
     });
     
     if (!result.ok) {

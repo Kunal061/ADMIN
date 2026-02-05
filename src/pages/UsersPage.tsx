@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { UserPlus, Trash2, Search, Edit, ChevronLeft, ChevronRight } from 'lucide-react';
+import { UserPlus, Trash2, Search, Edit, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { storage } from '@/lib/storage';
 import type { TripUser } from '@/types';
@@ -20,13 +20,27 @@ export function UsersPage() {
   const { showToast } = useApp();
   const [tripUsers, setTripUsers] = useState<TripUser[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [newFirstName, setNewFirstName] = useState('');
+  const [newLastName, setNewLastName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newDobDay, setNewDobDay] = useState('');
   const [newDobMonth, setNewDobMonth] = useState('');
   const [newDobYear, setNewDobYear] = useState('');
   const [newGender, setNewGender] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [moods, setMoods] = useState<any[]>([]);
+  const [moodsLoading, setMoodsLoading] = useState(false);
+  const [moodsError, setMoodsError] = useState<string | null>(null);
+  const [selectedMoodIds, setSelectedMoodIds] = useState<string[]>([]);
+  const [styles, setStyles] = useState<any[]>([]);
+  const [stylesLoading, setStylesLoading] = useState(false);
+  const [stylesError, setStylesError] = useState<string | null>(null);
+  const [selectedStyleIds, setSelectedStyleIds] = useState<string[]>([]);
+  const [newEmergencyName, setNewEmergencyName] = useState('');
+  const [newEmergencyRelationship, setNewEmergencyRelationship] = useState('');
+  const [newEmergencyContactNo, setNewEmergencyContactNo] = useState('');
+  const [newEmergencyEmail, setNewEmergencyEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
@@ -70,6 +84,8 @@ export function UsersPage() {
   }
   
   const API_BASE = `${API_BASE_URL}/admin/users`;
+  const MOODS_BASE = `${API_BASE_URL}/moods`;
+  const STYLES_BASE = `${API_BASE_URL}/styles`;
 
   // Helper to create authenticated headers
   const getAuthHeaders = () => ({
@@ -89,7 +105,9 @@ export function UsersPage() {
         throw new Error('Failed to fetch users from API');
       }
       const data = await response.json();
-      const list = Array.isArray(data) ? data : (data.users || []);
+      const list = Array.isArray(data)
+        ? data
+        : (data?.data?.data || data?.data || data?.users || []);
 
       // Transform API data (MongoDB: _id, firstName, lastName, dob) to TripUser format
       const transformedUsers: TripUser[] = list.map((user: any) => {
@@ -102,8 +120,8 @@ export function UsersPage() {
           id: (user._id ?? user.id).toString(),
           firstName,
           lastName,
-          email: user.email,
-          phone: user.phone || undefined,
+          email: user.emailAddress || user.email,
+          phone: user.mobileNo || user.phone || undefined,
           dateOfBirth,
           gender: user.gender || undefined,
         };
@@ -126,10 +144,76 @@ export function UsersPage() {
     fetchUsersFromAPI();
   }, []);
 
+  const mapApiMood = (mood: any) => ({
+    id: mood.id || mood._id,
+    name: mood.moodName || mood.name || '',
+    icon: mood.icon || mood.image || '',
+    color: mood.color || '#06B3C4',
+  });
+
+  const mapApiStyle = (style: any) => ({
+    id: style.id || style._id,
+    name: style.styleName || style.name || '',
+    icon: style.icon || style.image || '',
+    color: style.color || '#06B3C4',
+  });
+
+  const fetchMoodsFromAPI = async () => {
+    setMoodsLoading(true);
+    setMoodsError(null);
+    try {
+      const response = await fetch(`${MOODS_BASE}/get-all-moods`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to fetch moods');
+      }
+      const list = data?.data?.data || data?.data || data || [];
+      const transformed = Array.isArray(list) ? list.map(mapApiMood) : [];
+      setMoods(transformed);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch moods';
+      setMoodsError(message);
+      showToast(message, 'error');
+    } finally {
+      setMoodsLoading(false);
+    }
+  };
+
+  const fetchStylesFromAPI = async () => {
+    setStylesLoading(true);
+    setStylesError(null);
+    try {
+      const response = await fetch(`${STYLES_BASE}/get-all-styles`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to fetch styles');
+      }
+      const list = data?.data?.data || data?.data || data || [];
+      const transformed = Array.isArray(list) ? list.map(mapApiStyle) : [];
+      setStyles(transformed);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch styles';
+      setStylesError(message);
+      showToast(message, 'error');
+    } finally {
+      setStylesLoading(false);
+    }
+  };
+
   // Reset to page 1 when search query changes
   useEffect(() => {
     setCurrentPage(1);
   }, [searchQuery]);
+
+  // Load moods for selection in Add User dialog
+  useEffect(() => {
+    fetchMoodsFromAPI();
+    fetchStylesFromAPI();
+  }, []);
 
   const refreshTripUsers = () => {
     fetchUsersFromAPI();
@@ -137,7 +221,8 @@ export function UsersPage() {
 
   const handleAddUser = async () => {
     const email = newEmail.trim().toLowerCase();
-    const trimmed = newName.trim();
+    const trimmedFirstName = newFirstName.trim();
+    const trimmedLastName = newLastName.trim();
 
     if (!email) {
       setError('Please enter an email address');
@@ -147,25 +232,47 @@ export function UsersPage() {
       setError('Please enter a valid email address');
       return;
     }
-    if (!trimmed) {
-      setError('Please enter name');
+    if (!trimmedFirstName) {
+      setError('Please enter first name');
+      return;
+    }
+    if (!trimmedLastName) {
+      setError('Please enter last name');
+      return;
+    }
+    if (!newPassword.trim()) {
+      setError('Please enter a password');
+      return;
+    }
+    if (!newGender.trim()) {
+      setError('Please select a gender option');
       return;
     }
 
-    const spaceIndex = trimmed.indexOf(' ');
-    const firstName = spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
-    const lastName = spaceIndex === -1 ? '' : trimmed.slice(spaceIndex + 1).trim();
+    const mood = selectedMoodIds;
+    const style = selectedStyleIds;
 
     const dateOfBirth = (newDobDay && newDobMonth && newDobYear)
       ? `${newDobYear}-${newDobMonth.padStart(2, '0')}-${newDobDay.padStart(2, '0')}`
       : undefined;
 
+    const normalizedGender = newGender.trim().toLowerCase();
     const payload = {
-      name: [firstName, lastName].filter(Boolean).join(' '),
-      email,
-      phone: newPhone.trim() || undefined,
-      dateOfBirth: dateOfBirth || undefined,
-      gender: newGender.trim() || undefined,
+      firstName: trimmedFirstName,
+      lastName: trimmedLastName,
+      emailAddress: email,
+      mobileNo: newPhone.trim() || undefined,
+      dob: dateOfBirth || undefined,
+      gender: normalizedGender,
+      password: newPassword.trim(),
+      mood: mood.length ? mood : undefined,
+      style: style.length ? style : undefined,
+      emergency: {
+        contactName: newEmergencyName.trim() || undefined,
+        relationship: newEmergencyRelationship.trim() || undefined,
+        contactNo: newEmergencyContactNo.trim() || undefined,
+        email: newEmergencyEmail.trim() || undefined,
+      },
     };
 
     try {
@@ -174,16 +281,18 @@ export function UsersPage() {
         headers: getAuthHeaders(),
         body: JSON.stringify(payload),
       });
+      const responseData = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error('Failed to add user to API');
+        const message = responseData?.message || responseData?.error || 'Failed to add user to API';
+        throw new Error(message);
       }
-      refreshTripUsers();
-      showToast('User added successfully!');
+  refreshTripUsers();
+  showToast('User added successfully!');
     } catch {
       showToast('Failed to sync with API. Adding locally.');
       storage.addTripUser({
-        firstName,
-        lastName,
+        firstName: trimmedFirstName,
+        lastName: trimmedLastName,
         email,
         phone: newPhone.trim() || undefined,
         dateOfBirth,
@@ -192,13 +301,21 @@ export function UsersPage() {
       refreshTripUsers();
     }
 
-    setNewName('');
+    setNewFirstName('');
+    setNewLastName('');
     setNewEmail('');
     setNewPhone('');
     setNewDobDay('');
     setNewDobMonth('');
     setNewDobYear('');
     setNewGender('');
+    setNewPassword('');
+  setSelectedMoodIds([]);
+  setSelectedStyleIds([]);
+    setNewEmergencyName('');
+    setNewEmergencyRelationship('');
+    setNewEmergencyContactNo('');
+    setNewEmergencyEmail('');
     setError(null);
     setDialogOpen(false);
   };
@@ -244,12 +361,14 @@ export function UsersPage() {
     const dateOfBirth = (manageDobDay && manageDobMonth && manageDobYear)
       ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
       : undefined;
+    const normalizedGender = manageGender.trim().toLowerCase();
     const payload = {
-      name: [firstName, lastName].filter(Boolean).join(' '),
-      email: manageEmail.trim(),
-      phone: managePhone.trim() || undefined,
-      dateOfBirth: dateOfBirth || undefined,
-      gender: manageGender.trim() || undefined,
+      firstName,
+      lastName,
+      emailAddress: manageEmail.trim(),
+      mobileNo: managePhone.trim() || undefined,
+      dob: dateOfBirth || undefined,
+      gender: normalizedGender || undefined,
     };
     const updateData = {
       firstName,
@@ -314,13 +433,21 @@ export function UsersPage() {
         <Dialog open={dialogOpen}         onOpenChange={(open) => {
           setDialogOpen(open);
           if (!open) {
-            setNewName('');
+            setNewFirstName('');
+            setNewLastName('');
             setNewEmail('');
             setNewPhone('');
             setNewDobDay('');
             setNewDobMonth('');
             setNewDobYear('');
             setNewGender('');
+            setNewPassword('');
+            setSelectedMoodIds([]);
+            setSelectedStyleIds([]);
+            setNewEmergencyName('');
+            setNewEmergencyRelationship('');
+            setNewEmergencyContactNo('');
+            setNewEmergencyEmail('');
             setError(null);
           }
         }}>
@@ -333,22 +460,32 @@ export function UsersPage() {
               Add User
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
-            <DialogHeader className="text-center sm:text-center">
+          <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader className="text-center sm:text-center px-2">
               <DialogTitle className="font-heading text-center">Add User</DialogTitle>
               <DialogDescription className="mt-1 text-center">
                 Add a user you can later add as a participant to trips. They cannot access the admin panel.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-2">
+            <div className="space-y-4 py-2 px-2">
               <div className="space-y-2">
-                <Label htmlFor="user-name">Name <span className="text-red-500">*</span></Label>
+                <Label htmlFor="user-first-name">First Name <span className="text-red-500">*</span></Label>
                 <Input
-                  id="user-name"
+                  id="user-first-name"
                   type="text"
-                  placeholder="Enter full name"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Enter first name"
+                  value={newFirstName}
+                  onChange={(e) => setNewFirstName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-last-name">Last Name <span className="text-red-500">*</span></Label>
+                <Input
+                  id="user-last-name"
+                  type="text"
+                  placeholder="Enter last name"
+                  value={newLastName}
+                  onChange={(e) => setNewLastName(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -369,6 +506,16 @@ export function UsersPage() {
                   placeholder="Enter your Phone Number"
                   value={newPhone}
                   onChange={(e) => setNewPhone(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="user-password">Password <span className="text-red-500">*</span></Label>
+                <Input
+                  id="user-password"
+                  type="password"
+                  placeholder="Enter password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -424,19 +571,170 @@ export function UsersPage() {
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
               </div>
+              <div className="space-y-2">
+                <Label>Select Moods</Label>
+                <div className="flex flex-wrap items-center gap-2 pb-2">
+                  {moodsLoading && <span className="text-sm text-gray-500">Loading moods...</span>}
+                  {!moodsLoading && moodsError && (
+                    <span className="text-sm text-red-500">{moodsError}</span>
+                  )}
+                  {!moodsLoading && !moodsError && moods.length === 0 && (
+                    <span className="text-sm text-gray-500">No moods available</span>
+                  )}
+                  {!moodsLoading && moods.length > 0 && (
+                    <div className="flex flex-wrap gap-2 max-w-full">
+                      {moods.map((mood) => {
+                        const selected = selectedMoodIds.includes(mood.id);
+                        return (
+                          <button
+                            type="button"
+                            key={mood.id}
+                            onClick={() => {
+                              setSelectedMoodIds((prev) =>
+                                prev.includes(mood.id)
+                                  ? prev.filter((id) => id !== mood.id)
+                                  : [...prev, mood.id]
+                              );
+                            }}
+                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-gray-800'}`}
+                            style={{
+                              backgroundColor: selected ? '#06B3C4' : '#F7F9FA',
+                              borderColor: selected ? '#06B3C4' : '#E5E7EB',
+                            }}
+                          >
+                            {mood.icon ? (
+                              <img
+                                src={mood.icon}
+                                alt={mood.name}
+                                className="h-6 w-6 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div
+                                className="h-6 w-6 rounded-full"
+                                style={{ backgroundColor: mood.color || '#06B3C4' }}
+                              />
+                            )}
+                            <span className="whitespace-nowrap">{mood.name || 'Mood'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {/* Style chips selection replaces the old text input */}
+              <div className="space-y-2">
+                <Label htmlFor="emergency-name">Emergency Contact Name</Label>
+                <Input
+                  id="emergency-name"
+                  type="text"
+                  placeholder="Contact name"
+                  value={newEmergencyName}
+                  onChange={(e) => setNewEmergencyName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergency-relationship">Emergency Relationship</Label>
+                <Input
+                  id="emergency-relationship"
+                  type="text"
+                  placeholder="Relationship"
+                  value={newEmergencyRelationship}
+                  onChange={(e) => setNewEmergencyRelationship(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
+                <Input
+                  id="emergency-contact"
+                  type="tel"
+                  placeholder="Contact number"
+                  value={newEmergencyContactNo}
+                  onChange={(e) => setNewEmergencyContactNo(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="emergency-email">Emergency Email</Label>
+                <Input
+                  id="emergency-email"
+                  type="email"
+                  placeholder="contact@email.com"
+                  value={newEmergencyEmail}
+                  onChange={(e) => setNewEmergencyEmail(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Select Styles</Label>
+                <div className="flex flex-wrap items-center gap-2 pb-2">
+                  {stylesLoading && <span className="text-sm text-gray-500">Loading styles...</span>}
+                  {!stylesLoading && stylesError && (
+                    <span className="text-sm text-red-500">{stylesError}</span>
+                  )}
+                  {!stylesLoading && !stylesError && styles.length === 0 && (
+                    <span className="text-sm text-gray-500">No styles available</span>
+                  )}
+                  {!stylesLoading && styles.length > 0 && (
+                    <div className="flex flex-wrap gap-2 max-w-full">
+                      {styles.map((style) => {
+                        const selected = selectedStyleIds.includes(style.id);
+                        return (
+                          <button
+                            type="button"
+                            key={style.id}
+                            onClick={() => {
+                              setSelectedStyleIds((prev) =>
+                                prev.includes(style.id)
+                                  ? prev.filter((id) => id !== style.id)
+                                  : [...prev, style.id]
+                              );
+                            }}
+                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-gray-800'}`}
+                            style={{
+                              backgroundColor: selected ? '#06B3C4' : '#F7F9FA',
+                              borderColor: selected ? '#06B3C4' : '#E5E7EB',
+                            }}
+                          >
+                            {style.icon ? (
+                              <img
+                                src={style.icon}
+                                alt={style.name}
+                                className="h-6 w-6 rounded-full object-cover"
+                              />
+                            ) : (
+                              <div
+                                className="h-6 w-6 rounded-full"
+                                style={{ backgroundColor: style.color || '#06B3C4' }}
+                              />
+                            )}
+                            <span className="whitespace-nowrap">{style.name || 'Style'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
             <DialogFooter className="flex justify-end gap-2 mt-4">
               <Button
                 onClick={() => {
                   setDialogOpen(false);
-                  setNewName('');
+                  setNewFirstName('');
+                  setNewLastName('');
                   setNewEmail('');
                   setNewPhone('');
                   setNewDobDay('');
                   setNewDobMonth('');
                   setNewDobYear('');
                   setNewGender('');
+                  setNewPassword('');
+                  setSelectedMoodIds([]);
+                  setSelectedStyleIds([]);
+                  setNewEmergencyName('');
+                  setNewEmergencyRelationship('');
+                  setNewEmergencyContactNo('');
+                  setNewEmergencyEmail('');
                   setError(null);
                 }}
                 className="h-9 px-4 text-sm text-white font-medium"

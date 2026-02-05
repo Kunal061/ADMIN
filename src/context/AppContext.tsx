@@ -1,16 +1,13 @@
 import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import type { User, Trip, StyleOption, MoodOption, AuthState } from '@/types';
 import { storage, defaultStyles, defaultMoods } from '@/lib/storage';
-import { fetchAllowedUsers, loginWithCredentials, validateUserInAllowlist, type AllowedUser } from '@/lib/authApi';
+import { loginWithCredentials } from '@/lib/authApi';
 
 interface AppContextType {
   // Auth
   auth: AuthState;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
-  isLoadingAllowlist: boolean;
-  allowlistError: string | null;
-  retryFetchAllowlist: () => void;
 
   // User
   currentUser: User;
@@ -92,11 +89,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     user: null,
   });
 
-  // API-based authentication allowlist
-  const [allowedUsers, setAllowedUsers] = useState<Map<string, AllowedUser>>(new Map());
-  const [isLoadingAllowlist, setIsLoadingAllowlist] = useState(true);
-  const [allowlistError, setAllowlistError] = useState<string | null>(null);
-
   // Initialize with empty/defaults, but these will be overwritten on load
   const [currentUser, setCurrentUser] = useState<User>(defaultUser);
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -114,55 +106,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }, 3000);
   };
 
-  // Fetch allowed users from API for login validation
-  const loadAllowlist = async () => {
-    setIsLoadingAllowlist(true);
-    setAllowlistError(null);
-    try {
-      const users = await fetchAllowedUsers();
-      setAllowedUsers(users);
-      if (users.size === 0) {
-        setAllowlistError('Unable to load users. Token may be expired. Please check console for details.');
-      }
-    } catch (error) {
-      console.error('Failed to load allowlist:', error);
-      setAllowlistError('Failed to load user allowlist. Please check your API token.');
-    } finally {
-      setIsLoadingAllowlist(false);
-    }
-  };
-
-  const retryFetchAllowlist = () => {
-    loadAllowlist();
-  };
-
-  // Load allowlist from API on mount
+  // Load last active user on mount
   useEffect(() => {
-    loadAllowlist();
+    const lastUserEmail = storage.getLastActiveUser();
+    if (lastUserEmail) {
+      const userData = storage.loadUserData(lastUserEmail);
+      if (userData) {
+        const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
+        const mergedMoods = mergeMoods(defaultMoods, Array.isArray(userData.moods) ? userData.moods : undefined);
+
+        setAuth({
+          isAuthenticated: true,
+          user: userData.user,
+        });
+        setCurrentUser(userData.user);
+        setTrips(userData.trips);
+        setStyles(mergedStyles);
+        setMoods(mergedMoods);
+      }
+    }
   }, []);
-
-  // Load last active user on mount (after allowlist is loaded)
-  useEffect(() => {
-    if (!isLoadingAllowlist) {
-      const lastUserEmail = storage.getLastActiveUser();
-      if (lastUserEmail) {
-        const userData = storage.loadUserData(lastUserEmail);
-        if (userData) {
-          const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
-          const mergedMoods = mergeMoods(defaultMoods, Array.isArray(userData.moods) ? userData.moods : undefined);
-
-          setAuth({
-            isAuthenticated: true,
-            user: userData.user,
-          });
-          setCurrentUser(userData.user);
-          setTrips(userData.trips);
-          setStyles(mergedStyles);
-          setMoods(mergedMoods);
-        }
-      }
-    }
-  }, [isLoadingAllowlist]);
 
   // Persist changes whenever relevant state changes, BUT only if authenticated
   useEffect(() => {
@@ -198,61 +161,47 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const login = async (email: string, password: string): Promise<boolean> => {
-    if (!email || password.length < 6) return false;
-
     console.log('🔐 Attempting login for:', email);
-    console.log('📋 Allowlist size:', allowedUsers.size);
-
-    // Call the login API endpoint to validate credentials
-    const loginResult = await loginWithCredentials(email, password);
     
-    console.log('🔑 Login API result:', loginResult);
+    const result = await loginWithCredentials(email, password);
     
-    if (!loginResult.success) {
-      console.error('❌ Login API failed:', loginResult.message);
-      return false;
+    if (result.success && result.user) {
+      console.log('✅ Login successful via API');
+      
+      const userData = {
+        id: result.user.cognitoId || result.user.id || '1',
+        name: result.user.fullName || `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim(),
+        email: result.user.emailAddress || result.user.email || email,
+        profilePhoto: result.user.profilePicture || null,
+        emergencyContact: result.user.mobileNo || '',
+      };
+      
+      // Load or create user data in localStorage (for trips, styles, moods)
+      const storedData = storage.loadUserData(userData.email);
+      const mergedStyles = mergeStyles(defaultStyles, Array.isArray(storedData.styles) ? storedData.styles : undefined);
+      const mergedMoods = mergeMoods(defaultMoods, Array.isArray(storedData.moods) ? storedData.moods : undefined);
+      
+      // Update stored user with latest data from API
+      storage.saveUserData(userData.email, {
+        user: userData,
+        trips: storedData.trips,
+        styles: mergedStyles,
+        moods: mergedMoods,
+      });
+      
+      setAuth({ isAuthenticated: true, user: userData });
+      setCurrentUser(userData);
+      setTrips(storedData.trips);
+      setStyles(mergedStyles);
+      setMoods(mergedMoods);
+      
+      storage.setLastActiveUser(userData.email);
+      showToast('Welcome back!', 'success');
+      return true;
     }
-
-    console.log('✅ Login API succeeded, checking allowlist...');
-
-    // Check if user is in allowlist
-    const allowedUser = validateUserInAllowlist(email, allowedUsers);
-    console.log('👤 Allowlist check result:', allowedUser ? 'Found' : 'Not found');
     
-    if (!allowedUser) {
-      console.error('❌ User not in allowlist. Email:', email);
-      console.log('📋 Available emails in allowlist:', Array.from(allowedUsers.keys()));
-      return false;
-    }
-
-    const normalizedEmail = allowedUser.email;
-
-    // Load or create user data in localStorage (for trips, styles, moods)
-    const userData = storage.loadUserData(normalizedEmail);
-    
-    // Use name from API if available
-    const displayName = allowedUser.name || 
-      `${allowedUser.firstName || ''} ${allowedUser.lastName || ''}`.trim() ||
-      userData.user.name;
-    
-    if (displayName) {
-      userData.user = { ...userData.user, name: displayName, email: normalizedEmail };
-    }
-
-    const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
-    const mergedMoods = mergeMoods(defaultMoods, Array.isArray(userData.moods) ? userData.moods : undefined);
-
-    setAuth({
-      isAuthenticated: true,
-      user: userData.user,
-    });
-    setCurrentUser(userData.user);
-    setTrips(userData.trips);
-    setStyles(mergedStyles);
-    setMoods(mergedMoods);
-
-    storage.setLastActiveUser(normalizedEmail);
-    return true;
+    console.log('❌ Login failed:', result.message);
+    return false;
   };
 
   const logout = () => {
@@ -534,9 +483,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         auth,
         login,
         logout,
-        isLoadingAllowlist,
-        allowlistError,
-        retryFetchAllowlist,
         currentUser,
         updateUser,
         updateProfilePhoto,

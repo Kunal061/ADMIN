@@ -12,17 +12,20 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useState, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const IMAGE_LOAD_ERROR_MSG = 'Image could not be loaded. Try a smaller or different image.';
 
 export function MoodPage() {
-  const { moods, addMood, updateMood, deleteMood, showToast } = useApp();
+  const { showToast } = useApp();
+  const [moods, setMoods] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [editingMood, setEditingMood] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newMoodName, setNewMoodName] = useState('');
-  const [newMoodImage, setNewMoodImage] = useState('');
+  const [newMoodColor, setNewMoodColor] = useState('#000000');
   const [newMoodIcon, setNewMoodIcon] = useState('');
   const [editMoodName, setEditMoodName] = useState('');
   
@@ -36,53 +39,145 @@ export function MoodPage() {
   const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
-  const addMoodImageInputRef = useRef<HTMLInputElement>(null);
   const manageMoodIconInputRef = useRef<HTMLInputElement>(null);
   const manageMoodImageInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreateMood = () => {
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+  const MOODS_BASE = `${API_BASE_URL}/moods`;
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_TOKEN}`,
+  });
+
+  const mapApiMood = (mood: any) => ({
+    id: mood.id || mood._id,
+    name: mood.moodName || mood.name || '',
+    image: mood.icon || mood.image || '',
+    moodImage: mood.image ? { image: mood.image } : undefined,
+    isActive: mood.isActive ?? true,
+  });
+
+  const fetchMoodsFromAPI = async () => {
+    setIsLoading(true);
+    setApiError(null);
+    try {
+      const response = await fetch(`${MOODS_BASE}/get-all-moods`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to fetch moods from API');
+      }
+      const list = data?.data?.data || data?.data || data || [];
+      const transformed = Array.isArray(list) ? list.map(mapApiMood) : [];
+      setMoods(transformed);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to fetch moods';
+      setApiError(message);
+      showToast(message, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchMoodsFromAPI();
+  }, []);
+
+  const handleCreateMood = async () => {
     if (!newMoodName.trim()) {
       alert('Please enter a mood name');
       return;
     }
-    addMood({
-      name: newMoodName.trim(),
-      description: '',
-      icon: newMoodIcon || '',
-      isActive: true,
-      ...(newMoodIcon ? { image: newMoodIcon } : {}),
-      ...(newMoodImage ? { moodImage: { image: newMoodImage } } : {}),
-    });
-    showToast('Mood added successfully!');
-    setNewMoodName('');
-    setNewMoodImage('');
-    setNewMoodIcon('');
-    setDialogOpen(false);
+    if (!newMoodIcon) {
+      alert('Please upload a mood icon');
+      return;
+    }
+    if (!newMoodColor.trim()) {
+      alert('Please select a color');
+      return;
+    }
+
+    try {
+      const payload = {
+        moodName: newMoodName.trim(),
+        icon: newMoodIcon,
+        color: newMoodColor.trim(),
+      };
+      const response = await fetch(`${MOODS_BASE}/create-mood`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to create mood');
+      }
+      showToast('Mood added successfully!');
+      setNewMoodName('');
+  setNewMoodColor('#000000');
+      setNewMoodIcon('');
+      setDialogOpen(false);
+      fetchMoodsFromAPI();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to create mood';
+      showToast(message, 'error');
+    }
   };
 
-  const handleUpdateMood = () => {
+  const handleUpdateMood = async () => {
     if (!editingMood || !editMoodName.trim()) {
       alert('Please enter a mood name');
       return;
     }
-    updateMood(editingMood.id, {
-      name: editMoodName.trim(),
-    });
-    showToast('Mood updated successfully!');
-    setEditingMood(null);
-    setEditMoodName('');
+    try {
+      const payload = {
+        moodName: editMoodName.trim(),
+      };
+      const response = await fetch(`${MOODS_BASE}/update-mood/${editingMood.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to update mood');
+      }
+      showToast('Mood updated successfully!');
+      setEditingMood(null);
+      setEditMoodName('');
+      fetchMoodsFromAPI();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update mood';
+      showToast(message, 'error');
+    }
   };
 
-  const handleDeleteMood = (id: string, name: string) => {
+  const handleDeleteMood = async (id: string, name: string) => {
     if (confirm(`Are you sure you want to delete "${name}"?`)) {
-      deleteMood(id);
-      showToast('Mood deleted successfully!');
-      if (activeActionMood?.id === id) {
-        setActiveActionMood(null);
-        setManageMoodName('');
-        setManageMoodImage('');
-        setManageMoodUserInputImage('');
-        setManageMoodIsActive(false);
+      try {
+        const response = await fetch(`${MOODS_BASE}/delete-mood/${id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || 'Failed to delete mood');
+        }
+        showToast('Mood deleted successfully!');
+        if (activeActionMood?.id === id) {
+          setActiveActionMood(null);
+          setManageMoodName('');
+          setManageMoodImage('');
+          setManageMoodUserInputImage('');
+          setManageMoodIsActive(false);
+        }
+        fetchMoodsFromAPI();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to delete mood';
+        showToast(message, 'error');
       }
     }
   };
@@ -96,23 +191,38 @@ export function MoodPage() {
     setManageMoodIsActive(mood.isActive);
   };
 
-  const handleSaveManageMood = () => {
+  const handleSaveManageMood = async () => {
     if (!activeActionMood || !manageMoodName.trim()) {
       alert('Please enter a mood name');
       return;
     }
-    updateMood(activeActionMood.id, {
-      name: manageMoodName.trim(),
-      image: manageMoodImage,
-      isActive: manageMoodIsActive,
-      moodImage: manageMoodUserInputImage ? { image: manageMoodUserInputImage } : undefined,
-    });
-    showToast('Mood updated successfully!');
-    setActiveActionMood(null);
-    setManageMoodName('');
-    setManageMoodImage('');
-    setManageMoodUserInputImage('');
-    setManageMoodIsActive(false);
+    try {
+      const payload = {
+        moodName: manageMoodName.trim(),
+        icon: manageMoodImage || undefined,
+        image: manageMoodUserInputImage || undefined,
+        isActive: manageMoodIsActive,
+      };
+      const response = await fetch(`${MOODS_BASE}/update-mood/${activeActionMood.id}`, {
+        method: 'PUT',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to update mood');
+      }
+      showToast('Mood updated successfully!');
+      setActiveActionMood(null);
+      setManageMoodName('');
+      setManageMoodImage('');
+      setManageMoodUserInputImage('');
+      setManageMoodIsActive(false);
+      fetchMoodsFromAPI();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update mood';
+      showToast(message, 'error');
+    }
   };
 
   const handleCancelManageMood = () => {
@@ -143,7 +253,7 @@ export function MoodPage() {
             setDialogOpen(open);
             if (!open) {
               setNewMoodName('');
-              setNewMoodImage('');
+              setNewMoodColor('#000000');
               setNewMoodIcon('');
             }
           }}
@@ -226,52 +336,21 @@ export function MoodPage() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>User input image</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {newMoodImage ? (
-                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={newMoodImage}
-                          alt="Preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={addMoodImageInputRef}
-                      id="add-mood-image"
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                          alert('Image is too large. Please choose an image under 5 MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setNewMoodImage(result);
-                        };
-                        reader.onerror = () => {
-                          alert(IMAGE_LOAD_ERROR_MSG);
-                        };
-                        reader.readAsDataURL(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  <label
-                    htmlFor="add-mood-image"
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    {newMoodImage ? 'Change image' : 'Choose image'}
-                  </label>
+                <Label htmlFor="mood-color">Color</Label>
+                <div className="flex items-center gap-3">
+                  <input
+                    id="mood-color"
+                    type="color"
+                    value={newMoodColor}
+                    onChange={(e) => setNewMoodColor(e.target.value)}
+                    className="h-9 w-16 cursor-pointer rounded border border-gray-200 bg-white"
+                  />
+                  <Input
+                    value={newMoodColor}
+                    onChange={(e) => setNewMoodColor(e.target.value)}
+                    placeholder="#FFCAEC"
+                    className="flex-1"
+                  />
                 </div>
               </div>
             </div>
@@ -280,7 +359,7 @@ export function MoodPage() {
                 onClick={() => {
                   setDialogOpen(false);
                   setNewMoodName('');
-                  setNewMoodImage('');
+                  setNewMoodColor('#000000');
                   setNewMoodIcon('');
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
@@ -299,6 +378,17 @@ export function MoodPage() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {apiError && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 text-sm text-yellow-800">
+          ⚠️ {apiError}
+        </div>
+      )}
+      {isLoading && (
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-sm text-gray-600">
+          Loading moods...
+        </div>
+      )}
 
       {/* Moods Table */}
       <div className="bg-white rounded-lg shadow-sm border" style={{ borderColor: '#EEF0F1' }}>
@@ -360,7 +450,7 @@ export function MoodPage() {
                       </td>
                       <td className="w-[12%] py-3 px-6 text-center">
                         <span
-                          className={`inline-flex items-center justify-center min-w-[80px] px-3 py-1 rounded-full text-xs font-medium text-center ${
+                          className={`inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-full text-xs font-medium text-center ${
                             isActive
                               ? 'text-white'
                               : 'bg-gray-100 text-gray-600'

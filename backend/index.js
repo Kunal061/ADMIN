@@ -1,4 +1,4 @@
-require("dotenv").config();
+require("dotenv").config({ path: __dirname + '/.env' });
 const express = require("express");
 const cors = require("cors");
 
@@ -17,6 +17,10 @@ app.get("/ping", (req, res) => {
 // ROUTES - Proxy to external API
 const userRoutes = require("./routes/userRoutes");
 app.use("/api/admin/users", userRoutes);
+
+// Moods proxy routes
+const moodRoutes = require("./routes/moodRoutes");
+app.use("/api/moods", moodRoutes);
 
 // Auth proxy route
 const authRoutes = require("./routes/authRoutes");

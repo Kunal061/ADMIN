@@ -12,10 +12,14 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import type { StyleOption } from '@/types';
 
 export function StylePage() {
-  const { styles, toggleStyle, addStyle, updateStyle, deleteStyle, showToast } = useApp();
+  const { styles, addStyle, updateStyle, deleteStyle, showToast } = useApp();
+  const [displayStyles, setDisplayStyles] = useState<StyleOption[]>(styles);
+  const [isLoading, setIsLoading] = useState(false);
+  const [apiError, setApiError] = useState<string | null>(null);
   const [editingStyle, setEditingStyle] = useState<any>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newStyleName, setNewStyleName] = useState('');
@@ -31,6 +35,52 @@ export function StylePage() {
   const [manageStyleImage, setManageStyleImage] = useState('');
   const [manageStyleUserInputImage, setManageStyleUserInputImage] = useState('');
   const [manageStyleIsActive, setManageStyleIsActive] = useState(false);
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
+  const STYLES_BASE = `${API_BASE_URL}/styles`;
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${API_TOKEN}`,
+  });
+
+  const mapApiStyle = (style: any): StyleOption => ({
+    id: style.id || style._id,
+    name: style.styleName || style.name || '',
+    description: style.description || '',
+    icon: style.icon || style.image || '',
+    image: style.image || '',
+    isActive: style.isActive ?? true,
+    styleImage: style.image ? { image: style.image } : undefined,
+  });
+
+  const fetchStylesFromAPI = async () => {
+    setIsLoading(true);
+    setApiError(null);
+    try {
+      const response = await fetch(`${STYLES_BASE}/get-all-styles`, {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to fetch styles');
+      }
+      const list = data?.data?.data || data?.data || data || [];
+      const transformed = Array.isArray(list) ? list.map(mapApiStyle) : [];
+      setDisplayStyles(transformed);
+    } catch (err) {
+      console.error('Failed to fetch styles', err);
+      setApiError(err instanceof Error ? err.message : 'Failed to fetch styles');
+      setDisplayStyles(styles);
+    }
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    fetchStylesFromAPI();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Refs for file inputs
   const addStyleIconInputRef = useRef<HTMLInputElement>(null);
@@ -65,6 +115,7 @@ export function StylePage() {
       ...(newStyleImage ? { styleImage: { image: newStyleImage } } : {}),
     });
     showToast('Style added successfully!');
+    fetchStylesFromAPI();
     setNewStyleName('');
     setNewStyleIcon('');
     setNewStyleImage('');
@@ -80,6 +131,7 @@ export function StylePage() {
       name: editStyleName.trim(),
     });
     showToast('Style updated successfully!');
+    fetchStylesFromAPI();
     setEditingStyle(null);
     setEditStyleName('');
   };
@@ -88,6 +140,7 @@ export function StylePage() {
     if (confirm(`Are you sure you want to delete "${name}"?`)) {
       deleteStyle(id);
       showToast('Style deleted successfully!');
+  fetchStylesFromAPI();
       if (activeActionStyle?.id === id) {
         setActiveActionStyle(null);
         setManageStyleName('');
@@ -309,20 +362,29 @@ export function StylePage() {
 
       {/* Styles Table */}
       <div className="bg-white rounded-lg shadow-sm border" style={{ borderColor: '#EEF0F1' }}>
+        {apiError && (
+          <div className="px-4 py-3 text-sm text-red-700 bg-red-50 border-b border-red-100">
+            Failed to load styles: {apiError}
+          </div>
+        )}
         {(() => {
           const query = searchQuery.toLowerCase().trim();
           const filteredStyles = !query
-            ? styles
-            : styles.filter(
+            ? displayStyles
+            : displayStyles.filter(
                 (style) =>
                   style.name.toLowerCase().includes(query) ||
                   (style.isActive ? 'active' : 'inactive').includes(query)
               );
           return filteredStyles.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500">
-                {searchQuery.trim() ? 'No styles found matching your search.' : 'No styles created yet'}
-              </p>
+              {isLoading ? (
+                <p className="text-gray-500">Loading styles...</p>
+              ) : (
+                <p className="text-gray-500">
+                  {searchQuery.trim() ? 'No styles found matching your search.' : 'No styles created yet'}
+                </p>
+              )}
             </div>
           ) : (
           <div className="overflow-x-auto">
@@ -376,7 +438,7 @@ export function StylePage() {
                       </td>
                       <td className="w-[12%] py-3 px-6 text-center">
                         <span
-                          className={`inline-flex items-center justify-center min-w-[80px] px-3 py-1 rounded-full text-xs font-medium text-center ${
+                          className={`inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-full text-xs font-medium text-center ${
                             isActive
                               ? 'text-white'
                               : 'bg-gray-100 text-gray-600'

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, LogIn, Eye, EyeOff, KeyRound, ArrowLeft } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { storage } from '@/lib/storage';
+import { sendOtp, resetPassword } from '@/lib/forgotPasswordApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,16 +16,14 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login, isLoadingAllowlist, allowlistError, retryFetchAllowlist } = useApp();
+  const { login } = useApp();
   const navigate = useNavigate();
 
   // Forgot password flow
   const [forgotStep, setForgotStep] = useState<ForgotStep>('login');
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotError, setForgotError] = useState('');
-  const [devOtp, setDevOtp] = useState('');
   const [otpInput, setOtpInput] = useState('');
-  const [otpVerified, setOtpVerified] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
@@ -35,14 +33,12 @@ export function LoginPage() {
     setForgotStep('login');
     setForgotEmail('');
     setForgotError('');
-    setDevOtp('');
     setOtpInput('');
-    setOtpVerified(false);
     setNewPassword('');
     setConfirmPassword('');
   };
 
-  const handleSendOtp = (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError('');
     setForgotLoading(true);
@@ -52,19 +48,17 @@ export function LoginPage() {
       setForgotLoading(false);
       return;
     }
-    const result = storage.requestPasswordResetOtp(emailToUse);
+    const result = await sendOtp(emailToUse);
     setForgotLoading(false);
     if (result.success) {
       setForgotEmail(emailToUse);
-      setDevOtp(result.otp ?? '');
-      setOtpVerified(false);
       setForgotStep('resetPassword');
     } else {
-      setForgotError(result.error ?? 'Something went wrong.');
+      setForgotError(result.message);
     }
   };
 
-  const handleResetPassword = (e: React.FormEvent) => {
+  const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotError('');
     if (!otpInput.trim()) {
@@ -80,29 +74,12 @@ export function LoginPage() {
       return;
     }
     setForgotLoading(true);
-    const result = storage.verifyOtpAndResetPassword(forgotEmail, otpInput, newPassword);
+    const result = await resetPassword(forgotEmail, otpInput, newPassword);
     setForgotLoading(false);
     if (result.success) {
       setForgotStep('success');
     } else {
-      setForgotError(result.error ?? 'Something went wrong.');
-    }
-  };
-
-  const handleVerifyOtp = (e: React.FormEvent) => {
-    e.preventDefault();
-    setForgotError('');
-    if (!otpInput.trim()) {
-      setForgotError('Please enter the OTP.');
-      return;
-    }
-    setForgotLoading(true);
-    const result = storage.verifyOtp(forgotEmail, otpInput);
-    setForgotLoading(false);
-    if (result.success) {
-      setOtpVerified(true);
-    } else {
-      setForgotError(result.error ?? 'Something went wrong.');
+      setForgotError(result.message);
     }
   };
 
@@ -157,35 +134,6 @@ export function LoginPage() {
         </CardHeader>
         <CardContent>
           {forgotStep === 'login' && (
-            <>
-              {/* Allowlist Loading Indicator */}
-              {isLoadingAllowlist && (
-                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-blue-800 text-sm flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-blue-800/30 border-t-blue-800 rounded-full animate-spin" />
-                  <span>Loading user authentication...</span>
-                </div>
-              )}
-
-              {/* Allowlist Error Banner */}
-              {allowlistError && !isLoadingAllowlist && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-800 text-sm">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span>⚠️ {allowlistError}</span>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={retryFetchAllowlist}
-                      size="sm"
-                      className="h-7 px-3 text-xs text-white hover:opacity-90"
-                      style={{ backgroundColor: '#06B3C4' }}
-                    >
-                      Retry
-                    </Button>
-                  </div>
-                </div>
-              )}
-
             <form onSubmit={handleSubmit} className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="email" className="text-gray-700 font-medium">Email</Label>
@@ -243,7 +191,7 @@ export function LoginPage() {
 
               <Button
                 type="submit"
-                disabled={isLoading || isLoadingAllowlist}
+                disabled={isLoading}
                 className="w-full shadow-lg transition-all duration-300 hover:opacity-90 hover:shadow-xl hover:scale-[1.02] font-medium"
                 style={tealButtonStyle}
               >
@@ -251,11 +199,6 @@ export function LoginPage() {
                   <div className="flex items-center gap-2" style={{ color: 'white' }}>
                     <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     Signing in...
-                  </div>
-                ) : isLoadingAllowlist ? (
-                  <div className="flex items-center gap-2" style={{ color: 'white' }}>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Loading...
                   </div>
                 ) : (
                   <div className="flex items-center gap-2" style={{ color: 'white' }}>
@@ -265,7 +208,6 @@ export function LoginPage() {
                 )}
               </Button>
             </form>
-            </>
           )}
 
           {forgotStep === 'requestOtp' && (
@@ -318,16 +260,11 @@ export function LoginPage() {
             </form>
           )}
 
-          {forgotStep === 'resetPassword' && !otpVerified && (
-            <form onSubmit={handleVerifyOtp} className="space-y-6">
+          {forgotStep === 'resetPassword' && (
+            <form onSubmit={handleResetPassword} className="space-y-6">
               <p className="text-sm text-gray-600">
-                Enter the OTP sent to <strong>{forgotEmail}</strong>.
+                Enter the OTP sent to <strong>{forgotEmail}</strong> and set your new password.
               </p>
-              {devOtp && (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm">
-                  For testing, your OTP is: <strong>{devOtp}</strong>
-                </div>
-              )}
               <div className="space-y-2">
                 <Label htmlFor="otp" className="text-gray-700 font-medium">OTP</Label>
                 <div className="relative">
@@ -345,41 +282,6 @@ export function LoginPage() {
                   />
                 </div>
               </div>
-              {forgotError && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-600 text-sm">
-                  {forgotError}
-                </div>
-              )}
-              <Button
-                type="submit"
-                disabled={forgotLoading}
-                className="w-full shadow-lg transition-all duration-300 hover:opacity-90 hover:shadow-xl hover:scale-[1.02] font-medium"
-                style={tealButtonStyle}
-              >
-                {forgotLoading ? (
-                  <div className="flex items-center gap-2" style={{ color: 'white' }}>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    Verifying...
-                  </div>
-                ) : (
-                  <span style={{ color: 'white' }}>Verify OTP</span>
-                )}
-              </Button>
-              <Button
-                type="button"
-                onClick={goBackToLogin}
-                className="w-full flex items-center justify-center gap-2 shadow-lg transition-all duration-300 hover:opacity-90 hover:shadow-xl font-medium"
-                style={tealButtonStyle}
-              >
-                <ArrowLeft className="h-4 w-4" />
-                <span style={{ color: 'white' }}>Back to login</span>
-              </Button>
-            </form>
-          )}
-
-          {forgotStep === 'resetPassword' && otpVerified && (
-            <form onSubmit={handleResetPassword} className="space-y-6">
-              <p className="text-sm text-gray-600">Set your new password.</p>
               <div className="space-y-2">
                 <Label htmlFor="new-password" className="text-gray-700 font-medium">New password</Label>
                 <div className="relative">
