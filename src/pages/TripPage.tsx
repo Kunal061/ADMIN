@@ -184,7 +184,7 @@ export function TripPage() {
   const moodOptions = moods;
   const styleOptions = styles;
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
   const storedToken = typeof window !== 'undefined' ? localStorage.getItem('roamana_api_token') : null;
   const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN || storedToken || '';
   const getAuthHeaders = useCallback(() => {
@@ -199,7 +199,7 @@ export function TripPage() {
   const shouldUseApi = Boolean(API_BASE_URL);
 
   useEffect(() => {
-    if (!auth.isAuthenticated || !auth.user?.email || !shouldUseApi || hasFetchedTripsFromApiRef.current) {
+    if (!shouldUseApi || hasFetchedTripsFromApiRef.current) {
       return;
     }
 
@@ -239,7 +239,7 @@ export function TripPage() {
     fetchTripsFromApi();
 
     return () => controller.abort();
-  }, [auth.isAuthenticated, auth.user?.email, API_BASE_URL, getAuthHeaders, refreshTripsFromStorage, setTripsFromApi, shouldUseApi, showToast]);
+  }, [API_BASE_URL, getAuthHeaders, refreshTripsFromStorage, setTripsFromApi, shouldUseApi, showToast]);
 
   // When Trip page is shown and trips are empty, reload from storage (seeds 20 sample trips if needed)
   useEffect(() => {

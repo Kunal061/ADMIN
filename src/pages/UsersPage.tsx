@@ -76,7 +76,7 @@ export function UsersPage() {
   };
 
   // API configuration from environment variables (required)
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
   const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN;
   
   if (!API_BASE_URL || !API_TOKEN) {
