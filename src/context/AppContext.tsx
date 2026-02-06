@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback, type ReactNode } from 'react';
 import type { User, Trip, StyleOption, MoodOption, AuthState } from '@/types';
 import { storage, defaultStyles, defaultMoods } from '@/lib/storage';
 import { loginWithCredentials } from '@/lib/authApi';
@@ -23,6 +23,8 @@ interface AppContextType {
   addActivity: (tripId: string, dayId: string, activity: Omit<Trip['itinerary'][0]['activities'][0], 'id'>) => void;
   /** Reload trips from storage (seeds 20 sample trips if needed). Call when Trip page is shown and trips are empty. */
   refreshTripsFromStorage: () => void;
+  /** Set trips from API response (overrides current list). */
+  setTripsFromApi: (nextTrips: Trip[]) => void;
 
   // Styles
   styles: StyleOption[];
@@ -192,6 +194,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setTrips(storedData.trips);
       setStyles(mergedStyles);
       setMoods(mergedMoods);
+
+      if (result.token) {
+        try {
+          localStorage.setItem('roamana_api_token', result.token);
+        } catch (e) {
+          console.error('Failed to persist API token', e);
+        }
+      }
       
       storage.setLastActiveUser(userData.email);
       showToast('Welcome back!', 'success');
@@ -231,6 +241,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isAuthenticated: false,
       user: null,
     });
+    try {
+      localStorage.removeItem('roamana_api_token');
+    } catch (e) {
+      console.error('Failed to clear API token', e);
+    }
     storage.setLastActiveUser(null);
     setCurrentUser(defaultUser);
     setTrips([]);
@@ -455,12 +470,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setMoods(prev => prev.filter(m => m.id !== id));
   };
 
-  const refreshTripsFromStorage = () => {
+  const refreshTripsFromStorage = useCallback(() => {
     const email = auth.user?.email;
     if (email) {
       const userData = storage.loadUserData(email);
       setTrips(userData.trips);
     }
+  }, [auth.user?.email]);
+
+  const setTripsFromApi = (nextTrips: Trip[]) => {
+    setTrips(nextTrips);
   };
 
   return (
@@ -479,6 +498,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addItinerary,
         addActivity,
         refreshTripsFromStorage,
+  setTripsFromApi,
         styles,
         addStyle,
         updateStyle,

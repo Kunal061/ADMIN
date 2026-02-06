@@ -66,6 +66,7 @@ export interface StyleOption {
   name: string;
   icon?: string;
   image?: string;
+  isActive?: boolean;
 }
 
 export interface MoodImage {

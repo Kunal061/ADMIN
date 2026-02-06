@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Plus,
   MapPin,
@@ -25,8 +25,148 @@ import {
 } from '@/components/ui/dialog';
 import type { Trip } from '@/types';
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+
+const getString = (value: unknown, fallback = ''): string => {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  return fallback;
+};
+
+const getNumber = (value: unknown, fallback: number): number => {
+  if (typeof value === 'number' && !Number.isNaN(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? fallback : parsed;
+  }
+  return fallback;
+};
+
+const normalizeApiItinerary = (apiItinerary: unknown): Trip['itinerary'] => {
+  if (Array.isArray(apiItinerary)) {
+    return apiItinerary.map((day, index) => {
+      const dayObj = asRecord(day);
+      const activitiesRaw = Array.isArray(dayObj.activities) ? dayObj.activities : [];
+
+      return {
+        id: getString(dayObj.id ?? dayObj._id, `day-${index + 1}`),
+        day: getNumber(dayObj.day ?? dayObj.dayNumber, index + 1),
+        title: getString(dayObj.title ?? dayObj.name, `Day ${index + 1}`),
+        description: getString(dayObj.description ?? dayObj.itinerary, ''),
+        activities: activitiesRaw.map((activity, activityIndex) => {
+          const activityObj = asRecord(activity);
+          return {
+            id: getString(activityObj.id ?? activityObj._id, `activity-${index + 1}-${activityIndex}`),
+            time: getString(activityObj.time ?? activityObj.startTime, ''),
+            title: getString(activityObj.title ?? activityObj.name, ''),
+            description: getString(activityObj.description, ''),
+            location: getString(activityObj.location ?? activityObj.address, ''),
+          };
+        }),
+      };
+    });
+  }
+
+  if (apiItinerary && typeof apiItinerary === 'object') {
+    return Object.entries(apiItinerary).map(([dayKey, value], index) => {
+      const dayNumber = getNumber(dayKey, index + 1);
+      const entry = asRecord(value);
+      return {
+        id: `day-${dayNumber}`,
+        day: dayNumber,
+        title: getString(entry.title, `Day ${dayNumber}`),
+        description: getString(entry.itinerary ?? entry.description, ''),
+        activities: [],
+      };
+    });
+  }
+
+  return [];
+};
+
+const normalizeApiPlaces = (apiTrip: unknown): Trip['places'] => {
+  const trip = asRecord(apiTrip);
+  if (Array.isArray(trip.places)) {
+    return trip.places.map((place, index) => {
+      const placeObj = asRecord(place);
+      return {
+        id: getString(placeObj.id ?? placeObj._id, `place-${index + 1}`),
+        name: getString(placeObj.name ?? placeObj.title, ''),
+        image: getString(placeObj.image ?? placeObj.photoUrl, ''),
+        mapLink: getString(placeObj.mapLink ?? placeObj.link, '') || undefined,
+      };
+    });
+  }
+
+  if (Array.isArray(trip.locations)) {
+    return trip.locations.map((location, index) => {
+      const locationObj = asRecord(location);
+      return {
+        id: getString(locationObj.id ?? locationObj._id, `location-${index + 1}`),
+        name: getString(locationObj.name ?? locationObj.address, ''),
+        image: getString(locationObj.photoUrl ?? locationObj.image, ''),
+        mapLink: getString(locationObj.mapLink ?? locationObj.link, '') || undefined,
+      };
+    });
+  }
+
+  return [];
+};
+
+const mapTripFromApi = (apiTrip: unknown, index: number): Trip => {
+  const trip = asRecord(apiTrip);
+  const overview = asRecord(trip.overview);
+  const journal = asRecord(trip.journal);
+  const mood = asRecord(trip.mood);
+  const style = asRecord(trip.style);
+  const locations = Array.isArray(trip.locations) ? trip.locations : [];
+  const primaryLocation = asRecord(locations[0]);
+
+  const destination =
+    getString(trip.destination) ||
+    getString(primaryLocation.address) ||
+    getString(primaryLocation.name) ||
+    getString(overview.summary);
+
+  const statusRaw = getString(trip.status);
+  const isDraft = trip.isDraft === true;
+
+  return {
+    id: getString(trip._id ?? trip.id ?? trip.tripId, `api-trip-${index + 1}`),
+    title: getString(trip.tripName ?? trip.title ?? trip.name ?? overview.name, ''),
+    description: getString(trip.description ?? overview.summary ?? overview.notes, ''),
+    destination,
+    startDate: getString(trip.startDate ?? trip.start_date ?? trip.start, ''),
+    endDate: getString(trip.endDate ?? trip.end_date ?? trip.end, ''),
+    coverImage: getString(trip.coverImage ?? trip.wallpaper ?? journal.wallpaper, ''),
+    itinerary: normalizeApiItinerary(trip.itinerary ?? trip.dayWiseItinerary),
+    moods: Array.isArray(mood.moods) ? mood.moods.map(item => getString(item, '')).filter(Boolean) : undefined,
+    styles: Array.isArray(style.styles) ? style.styles.map(item => getString(item, '')).filter(Boolean) : undefined,
+    places: normalizeApiPlaces(trip),
+    status: statusRaw
+      ? statusRaw === 'Inactive'
+        ? 'Inactive'
+        : 'Active'
+      : isDraft
+        ? 'Inactive'
+        : 'Active',
+    participantIds: Array.isArray(trip.members)
+      ? trip.members
+          .map(member => {
+            const memberObj = asRecord(member);
+            return getString(memberObj.id ?? memberObj._id ?? memberObj.userId ?? member, '');
+          })
+          .filter(Boolean)
+      : undefined,
+    rating: typeof trip.rating === 'number' ? trip.rating : undefined,
+    price: typeof trip.price === 'number' ? trip.price : undefined,
+    createdAt: getString(trip.createdAt ?? trip.created_at, '') || undefined,
+  };
+};
+
 export function TripPage() {
-  const { auth, trips, addTrip, deleteTrip, updateTrip, moods, styles, refreshTripsFromStorage, showToast } = useApp();
+  const { auth, trips, addTrip, deleteTrip, updateTrip, moods, styles, refreshTripsFromStorage, setTripsFromApi, showToast } = useApp();
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [tripDialogOpen, setTripDialogOpen] = useState(false);
   const [editTripDialogOpen, setEditTripDialogOpen] = useState(false);
@@ -38,13 +178,80 @@ export function TripPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editParticipantSearchQuery, setEditParticipantSearchQuery] = useState('');
   const [newTripParticipantSearchQuery, setNewTripParticipantSearchQuery] = useState('');
+  const hasRefreshedTripsRef = useRef(false);
+  const hasFetchedTripsFromApiRef = useRef(false);
+  const isStyleActive = (style?: { isActive?: boolean } | null) => style?.isActive !== false;
+  const moodOptions = moods;
+  const styleOptions = styles;
+
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+  const storedToken = typeof window !== 'undefined' ? localStorage.getItem('roamana_api_token') : null;
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN || storedToken || '';
+  const getAuthHeaders = useCallback(() => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (API_TOKEN) {
+      headers.Authorization = `Bearer ${API_TOKEN}`;
+    }
+    return headers;
+  }, [API_TOKEN]);
+  const shouldUseApi = Boolean(API_BASE_URL);
+
+  useEffect(() => {
+    if (!auth.isAuthenticated || !auth.user?.email || !shouldUseApi || hasFetchedTripsFromApiRef.current) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    const fetchTripsFromApi = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/trips`, {
+          headers: getAuthHeaders(),
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || data?.error || `Failed to fetch trips (HTTP ${response.status})`);
+        }
+
+        if (data?.status && data.status !== 'success') {
+          throw new Error(data?.message || 'Trips request returned a non-success status');
+        }
+
+        const list = data?.data?.data || data?.data || data || [];
+        const normalizedTrips = Array.isArray(list) ? list.map(mapTripFromApi) : [];
+        setTripsFromApi(normalizedTrips);
+        showToast('Trips loaded from API successfully!');
+        hasRefreshedTripsRef.current = true;
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        const message = err instanceof Error ? err.message : 'Failed to load trips from API';
+        showToast(`${message}. Loading local data...`, 'error');
+        refreshTripsFromStorage();
+        hasRefreshedTripsRef.current = true;
+      } finally {
+        hasFetchedTripsFromApiRef.current = true;
+      }
+    };
+
+    fetchTripsFromApi();
+
+    return () => controller.abort();
+  }, [auth.isAuthenticated, auth.user?.email, API_BASE_URL, getAuthHeaders, refreshTripsFromStorage, setTripsFromApi, shouldUseApi, showToast]);
 
   // When Trip page is shown and trips are empty, reload from storage (seeds 20 sample trips if needed)
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user?.email && trips.length === 0) {
+    if (shouldUseApi) return;
+    if (auth.isAuthenticated && auth.user?.email && trips.length === 0 && !hasRefreshedTripsRef.current) {
+      hasRefreshedTripsRef.current = true;
       refreshTripsFromStorage();
     }
-  }, [auth.isAuthenticated, auth.user?.email, trips.length, refreshTripsFromStorage]);
+    if (trips.length > 0) {
+      hasRefreshedTripsRef.current = true;
+    }
+  }, [auth.isAuthenticated, auth.user?.email, trips.length, refreshTripsFromStorage, shouldUseApi]);
 
   // Keep selectedTrip in sync with trips state
   useEffect(() => {
@@ -73,7 +280,7 @@ export function TripPage() {
     setSelectedStyles(prev => 
       prev.filter(styleId => {
         const style = styles.find(s => s.id === styleId);
-        return style && style.isActive;
+        return isStyleActive(style);
       })
     );
   }, [styles]);
@@ -222,7 +429,7 @@ export function TripPage() {
     });
   }, [newTrip.startDate, newTrip.endDate]);
 
-  const handleCreateTrip = () => {
+  const handleCreateTrip = async () => {
     // Validate required fields
     if (!newTrip.title.trim()) {
       alert('Please enter a trip title');
@@ -260,15 +467,88 @@ export function TripPage() {
     // Add the trip with itinerary, moods, styles, and places
     // Filter selected moods to only include active ones
     const activeSelectedMoods = selectedMoods.filter(moodId => {
-      const mood = moods.find(m => m.id === moodId);
-      return mood && mood.isActive;
+      const mood = moodOptions.find(m => m.id === moodId);
+      return mood && mood.isActive !== false;
     });
     
     // Filter selected styles to only include active ones
     const activeSelectedStyles = selectedStyles.filter(styleId => {
-      const style = styles.find(s => s.id === styleId);
-      return style && style.isActive;
+      const style = styleOptions.find(s => s.id === styleId);
+      return isStyleActive(style);
     });
+
+    const moodNames = activeSelectedMoods
+      .map(id => moodOptions.find(m => m.id === id)?.name)
+      .filter(Boolean) as string[];
+
+    const createdAtIso = new Date().toISOString();
+    const apiPayload = {
+      tripName: newTrip.title.trim(),
+      type: 'public',
+      startDate: new Date(newTrip.startDate).toISOString(),
+      endDate: new Date(newTrip.endDate).toISOString(),
+      createdBy: auth.user?.id ?? 'admin',
+      members: newTrip.participantIds ?? [],
+      mood: {
+        moods: moodNames,
+        badges: [],
+      },
+      itinerary: formattedItinerary.reduce<Record<string, { title: string; itinerary: string }>>(
+        (acc, day) => {
+          acc[String(day.day)] = {
+            title: day.title,
+            itinerary: day.description || '',
+          };
+          return acc;
+        },
+        {}
+      ),
+      isFeatured: false,
+      isDraft: false,
+      wallpaper: newTrip.coverImage || undefined,
+      bookmarkedBy: [],
+      journal: {
+        title: newTrip.title.trim(),
+        notes: [],
+        media: [],
+        wallpaper: newTrip.coverImage || undefined,
+        createdAt: createdAtIso,
+        updatedAt: createdAtIso,
+      },
+      memberRequests: [],
+      locations: formattedPlaces.map(place => ({
+        name: place.name,
+        address: place.name,
+        country: '',
+        latitude: undefined,
+        longitude: undefined,
+        photoUrl: place.image,
+      })),
+      createdAt: createdAtIso,
+      updatedAt: createdAtIso,
+      overview: {
+        name: newTrip.title.trim(),
+        summary: newTrip.description?.trim() || newTrip.destination.trim(),
+        notes: '',
+      },
+    };
+
+    if (API_BASE_URL && API_TOKEN) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/trips`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(apiPayload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || 'Failed to create trip');
+        }
+        showToast('Trip created in API successfully!');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to create trip in API', 'error');
+      }
+    }
     
     addTrip({
       ...newTrip,
@@ -440,7 +720,7 @@ export function TripPage() {
     // Filter editingSelectedStyles to only include active ones
     const activeEditingSelectedStyles = editingSelectedStyles.filter(styleId => {
       const style = styles.find(s => s.id === styleId);
-      return style && style.isActive;
+      return isStyleActive(style);
     });
 
     // Filter editingSelectedMoods to only include active ones
@@ -782,7 +1062,7 @@ export function TripPage() {
                         </DialogDescription>
                       </DialogHeader>
                       <div className="flex flex-wrap gap-2 py-4">
-                        {styles.filter(style => style.isActive).map((style) => {
+                        {styles.filter(isStyleActive).map((style) => {
                           const isSelected = selectedStyles.includes(style.id);
                           return (
                             <button
@@ -837,14 +1117,14 @@ export function TripPage() {
                 <div className="flex flex-wrap gap-2">
                   {selectedStyles.filter(styleId => {
                     const style = styles.find(s => s.id === styleId);
-                    return style && style.isActive;
+                    return isStyleActive(style);
                   }).length === 0 ? (
                     <p className="text-sm text-gray-500">No styles selected. Click "+ Add Style" to select styles.</p>
                   ) : (
                     selectedStyles
                       .filter(styleId => {
                         const style = styles.find(s => s.id === styleId);
-                        return style && style.isActive;
+                        return isStyleActive(style);
                       })
                       .map((styleId) => {
                         const style = styles.find(s => s.id === styleId);
@@ -1002,7 +1282,7 @@ export function TripPage() {
                           </div>
                         )}
                         {newPlace.imageName && (
-                          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 text-xs text-gray-700 max-w-[220px] flex-1 min-w-0">
+                          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 text-xs text-gray-700 max-w-55 flex-1 min-w-0">
                             <span className="truncate flex-1">
                               {newPlace.imageName}
                             </span>
@@ -1696,7 +1976,7 @@ export function TripPage() {
                         </DialogDescription>
                       </DialogHeader>
                       <div className="flex flex-wrap gap-2 py-4">
-                        {styles.filter(style => style.isActive).map((style) => {
+                        {styles.filter(isStyleActive).map((style) => {
                           const isSelected = editingSelectedStyles.includes(style.id);
                           return (
                             <button
@@ -1751,14 +2031,14 @@ export function TripPage() {
                 <div className="flex flex-wrap gap-2">
                   {editingSelectedStyles.filter(styleId => {
                     const style = styles.find(s => s.id === styleId);
-                    return style && style.isActive;
+                    return isStyleActive(style);
                   }).length === 0 ? (
                     <p className="text-sm text-gray-500">No styles selected. Click "+ Add Style" to select styles.</p>
                   ) : (
                     editingSelectedStyles
                       .filter(styleId => {
                         const style = styles.find(s => s.id === styleId);
-                        return style && style.isActive;
+                        return isStyleActive(style);
                       })
                       .map((styleId) => {
                         const style = styles.find(s => s.id === styleId);
