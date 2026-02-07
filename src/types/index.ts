@@ -17,6 +17,14 @@ export interface TripUser {
   phone?: string;
   dateOfBirth?: string;
   gender?: string;
+  mood?: string[];
+  style?: string[];
+  emergency?: {
+    contactName?: string;
+    relationship?: string;
+    contactNo?: string;
+    email?: string;
+  };
 }
 
 export interface Trip {
@@ -33,6 +41,10 @@ export interface Trip {
   places?: Place[];
   status?: 'Active' | 'Inactive';
   participantIds?: string[]; // TripUser ids
+  type?: 'public' | 'private' | 'invite-only' | string;
+  isFeatured?: boolean;
+  overviewType?: string;
+  overviewNotes?: string;
   rating?: number;
   price?: number;
   createdAt?: string;

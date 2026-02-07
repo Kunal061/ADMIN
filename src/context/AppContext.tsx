@@ -40,7 +40,7 @@ interface AppContextType {
   deleteMood: (id: string) => void;
 
   // Toast
-  toast: { message: string; variant: 'success' | 'error' } | null;
+  toast: { message: string; variant: 'success' | 'error'; visible: boolean } | null;
   showToast: (message: string, variant?: 'success' | 'error') => void;
 }
 
@@ -94,16 +94,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [styles, setStyles] = useState<StyleOption[]>(defaultStyles);
   const [moods, setMoods] = useState<MoodOption[]>(defaultMoods);
-  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error' } | null>(null);
+  const [toast, setToast] = useState<{ message: string; variant: 'success' | 'error'; visible: boolean } | null>(null);
   const toastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const toastHideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (message: string, variant: 'success' | 'error' = 'success') => {
     if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
-    setToast({ message, variant });
+    if (toastHideTimeoutRef.current) clearTimeout(toastHideTimeoutRef.current);
+    setToast({ message, variant, visible: true });
+    toastHideTimeoutRef.current = setTimeout(() => {
+      setToast((prev) => (prev ? { ...prev, visible: false } : prev));
+    }, 500);
     toastTimeoutRef.current = setTimeout(() => {
       setToast(null);
       toastTimeoutRef.current = null;
-    }, 3000);
+      toastHideTimeoutRef.current = null;
+    }, 800);
   };
 
   // Load last active user on mount
@@ -169,7 +175,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       console.log('✅ Login successful via API');
       
       const userData = {
-        id: result.user.cognitoId || result.user.id || '1',
+        id: result.user.id || result.user._id || result.user.cognitoId || '1',
         name: result.user.fullName || `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim(),
         email: result.user.emailAddress || result.user.email || email,
         profilePhoto: result.user.profilePicture || null,

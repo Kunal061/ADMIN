@@ -26,16 +26,21 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className="min-h-screen h-screen relative font-sans flex flex-col bg-white">
-      <Toast message={toast?.message ?? null} variant={toast?.variant} />
+      <Toast
+        message={toast?.message ?? null}
+        variant={toast?.variant}
+        visible={toast?.visible ?? false}
+      />
       {/* White header: logo + page title (left); profile (right); mobile menu button left of logo */}
       <header
-        className="w-full flex items-center justify-between gap-4 px-4 py-0.5 lg:px-6 lg:py-1 shrink-0 relative z-20 bg-white border-b border-gray-200"
+        className="w-full flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 lg:px-6 lg:py-1 shrink-0 relative z-20 bg-white border-b border-gray-200"
       >
-        <div className="flex items-center gap-2 ml-6">
+        <div className="w-full flex items-center justify-between gap-2 sm:w-auto sm:justify-start sm:ml-6 ml-0">
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden text-gray-700 hover:bg-gray-100"
+            className="lg:hidden text-white hover:opacity-90"
+            style={{ backgroundColor: '#06B3C4' }}
             onClick={() => setSidebarOpen(true)}
           >
             <Menu className="h-5 w-5" />
@@ -43,7 +48,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
           <img
             src="/roamana-logo.png"
             alt="Roamana"
-            className="h-16 w-auto max-w-[240px] object-contain ml-2"
+            className="h-16 w-auto max-w-60 object-contain ml-2"
           />
         </div>
         {pageTitle && (
@@ -53,7 +58,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
             </h1>
           </div>
         )}
-        <div className="ml-auto shrink-0">
+        <div className="w-full flex justify-end sm:w-auto sm:ml-auto shrink-0">
           <ProfileSection />
         </div>
       </header>
@@ -63,7 +68,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
         <Sidebar sidebarOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
         {/* Page content */}
-        <main className="flex-1 overflow-x-hidden px-6 pt-1 pb-5 lg:px-10 lg:pt-2 lg:pb-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-10 bg-white">
+  <main className="flex-1 overflow-x-hidden px-3 pt-1 pb-5 sm:px-6 lg:px-10 lg:pt-2 lg:pb-6 animate-in fade-in slide-in-from-bottom-4 duration-500 relative z-10 bg-white">
           <div className="w-full relative">
             {children}
           </div>

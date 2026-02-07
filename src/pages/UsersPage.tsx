@@ -52,6 +52,16 @@ export function UsersPage() {
   const [manageDobMonth, setManageDobMonth] = useState('');
   const [manageDobYear, setManageDobYear] = useState('');
   const [manageGender, setManageGender] = useState('');
+  const [manageEmergencyName, setManageEmergencyName] = useState('');
+  const [manageEmergencyRelationship, setManageEmergencyRelationship] = useState('');
+  const [manageEmergencyContactNo, setManageEmergencyContactNo] = useState('');
+  const [manageEmergencyEmail, setManageEmergencyEmail] = useState('');
+  const [manageSelectedMoodIds, setManageSelectedMoodIds] = useState<string[]>([]);
+  const [manageSelectedStyleIds, setManageSelectedStyleIds] = useState<string[]>([]);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteUserId, setDeleteUserId] = useState('');
+  const [deleteUserName, setDeleteUserName] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
   
@@ -62,6 +72,20 @@ export function UsersPage() {
   const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const CURRENT_YEAR = new Date().getFullYear();
   const YEAR_START = 1920;
+
+  const normalizeIdList = (value: unknown): string[] => {
+    if (!Array.isArray(value)) return [];
+    return value
+      .map((entry) => {
+        if (typeof entry === 'string') return entry;
+        if (entry && typeof entry === 'object') {
+          const record = entry as Record<string, unknown>;
+          return String(record.id || record._id || '');
+        }
+        return '';
+      })
+      .filter(Boolean);
+  };
 
   // Format date from YYYY-MM-DD to DD-MM-YYYY
   const formatDateOfBirth = (dateString: string | undefined): string => {
@@ -124,6 +148,8 @@ export function UsersPage() {
           phone: user.mobileNo || user.phone || undefined,
           dateOfBirth,
           gender: user.gender || undefined,
+          mood: normalizeIdList(user.mood),
+          style: normalizeIdList(user.style),
         };
       });
       
@@ -320,8 +346,8 @@ export function UsersPage() {
     setDialogOpen(false);
   };
 
-  const handleDeleteUser = async (id: string, displayName: string) => {
-    if (!confirm(`Are you sure you want to remove ${displayName}?`)) return;
+  const handleDeleteUser = async (id: string) => {
+    setDeleteLoading(true);
     try {
       const response = await fetch(`${API_BASE}/${id}`, {
         method: 'DELETE',
@@ -334,7 +360,18 @@ export function UsersPage() {
       showToast('Failed to delete on API. Removing locally.');
       storage.deleteTripUser(id);
       refreshTripUsers();
+    } finally {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      setDeleteUserId('');
+      setDeleteUserName('');
     }
+  };
+
+  const handleRequestDelete = (id: string, displayName: string) => {
+    setDeleteUserId(id);
+    setDeleteUserName(displayName);
+    setDeleteDialogOpen(true);
   };
 
   const resetManageDialog = () => {
@@ -347,6 +384,12 @@ export function UsersPage() {
     setManageDobMonth('');
     setManageDobYear('');
     setManageGender('');
+    setManageEmergencyName('');
+    setManageEmergencyRelationship('');
+    setManageEmergencyContactNo('');
+    setManageEmergencyEmail('');
+    setManageSelectedMoodIds([]);
+    setManageSelectedStyleIds([]);
   };
 
   const handleSaveUser = async () => {
@@ -354,30 +397,46 @@ export function UsersPage() {
       resetManageDialog();
       return;
     }
-    const trimmed = manageName.trim();
-    const spaceIndex = trimmed.indexOf(' ');
-    const firstName = spaceIndex === -1 ? trimmed : trimmed.slice(0, spaceIndex);
-    const lastName = spaceIndex === -1 ? '' : trimmed.slice(spaceIndex + 1).trim();
-    const dateOfBirth = (manageDobDay && manageDobMonth && manageDobYear)
+    const trimmedName = manageName.trim();
+    const nameParts = trimmedName.split(' ').filter(Boolean);
+    const firstName = nameParts.shift() || '';
+    const lastName = nameParts.join(' ');
+    const dateOfBirth = manageDobYear && manageDobMonth && manageDobDay
       ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
       : undefined;
-    const normalizedGender = manageGender.trim().toLowerCase();
-    const payload = {
-      firstName,
-      lastName,
-      emailAddress: manageEmail.trim(),
-      mobileNo: managePhone.trim() || undefined,
-      dob: dateOfBirth || undefined,
-      gender: normalizedGender || undefined,
+    const normalizedGender = manageGender.trim().toLowerCase() || undefined;
+    const payload: Record<string, unknown> = {
+      mood: manageSelectedMoodIds,
+      style: manageSelectedStyleIds,
     };
-    const updateData = {
-      firstName,
-      lastName,
-      email: manageEmail.trim(),
-      phone: managePhone.trim() || undefined,
-      dateOfBirth,
-      gender: manageGender.trim() || undefined,
+    const updateData: Record<string, unknown> = {
+      mood: manageSelectedMoodIds,
+      style: manageSelectedStyleIds,
     };
+    if (trimmedName) {
+      payload.firstName = firstName || trimmedName;
+      payload.lastName = lastName || undefined;
+      updateData.firstName = firstName || trimmedName;
+      updateData.lastName = lastName || undefined;
+    }
+    if (dateOfBirth) {
+      payload.dob = dateOfBirth;
+      updateData.dateOfBirth = dateOfBirth;
+    }
+    if (normalizedGender) {
+      payload.gender = normalizedGender;
+      updateData.gender = normalizedGender;
+    }
+    const emergency = {
+      contactName: manageEmergencyName.trim() || undefined,
+      relationship: manageEmergencyRelationship.trim() || undefined,
+      contactNo: manageEmergencyContactNo.trim() || undefined,
+      email: manageEmergencyEmail.trim() || undefined,
+    };
+    if (emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email) {
+      payload.emergency = emergency;
+      updateData.emergency = emergency;
+    }
     try {
       const response = await fetch(`${API_BASE}/${manageUserId}`, {
         method: 'PUT',
@@ -419,8 +478,8 @@ export function UsersPage() {
       )}
 
       {/* Search Box + Add User */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="relative flex-1">
+      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative w-full sm:flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
@@ -883,6 +942,13 @@ export function UsersPage() {
                                 setManageDobYear('');
                               }
                               setManageGender(user.gender ?? '');
+                              const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
+                              setManageEmergencyName(emergency.contactName ?? '');
+                              setManageEmergencyRelationship(emergency.relationship ?? '');
+                              setManageEmergencyContactNo(emergency.contactNo ?? '');
+                              setManageEmergencyEmail(emergency.email ?? '');
+                              setManageSelectedMoodIds(user.mood ?? []);
+                              setManageSelectedStyleIds(user.style ?? []);
                               setManageDialogOpen(true);
                             }}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
@@ -893,7 +959,7 @@ export function UsersPage() {
                           <Button
                             type="button"
                             size="sm"
-                            onClick={() => handleDeleteUser(user.id, displayName)}
+                            onClick={() => handleRequestDelete(user.id, displayName)}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
                             style={{ backgroundColor: '#06B3C4' }}
                           >
@@ -991,43 +1057,43 @@ export function UsersPage() {
             setManageDobMonth('');
             setManageDobYear('');
             setManageGender('');
+            setManageEmergencyName('');
+            setManageEmergencyRelationship('');
+            setManageEmergencyContactNo('');
+            setManageEmergencyEmail('');
+            setManageSelectedMoodIds([]);
+            setManageSelectedStyleIds([]);
           }
         }}
       >
-        <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+  <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="text-center">
             <DialogTitle className="font-heading text-left">Edit User</DialogTitle>
             <DialogDescription className="mt-1 text-left">
               Edit the user&apos;s details. Email is shown for reference and cannot be changed.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
+          <div className="space-y-3 py-1">
+            <div className="space-y-1">
               <Label htmlFor="manage-name">Name</Label>
               <Input
                 id="manage-name"
                 type="text"
+                placeholder="Enter full name"
                 value={manageName}
                 onChange={(e) => setManageName(e.target.value)}
-                placeholder="Enter full name"
               />
             </div>
             <div className="space-y-1">
               <Label>Email</Label>
               <p className="text-sm text-gray-700">{manageEmail}</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="manage-phone">Phone Number</Label>
-              <Input
-                id="manage-phone"
-                type="tel"
-                value={managePhone}
-                onChange={(e) => setManagePhone(e.target.value)}
-                placeholder="Enter your Phone Number"
-              />
+            <div className="space-y-1">
+              <Label>Phone Number</Label>
+              <p className="text-sm text-gray-700">{managePhone || '—'}</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="manage-dob-day">Date of Birth</Label>
+            <div className="space-y-1">
+              <Label htmlFor="manage-dob">Date of Birth</Label>
               <div className="flex gap-2">
                 <select
                   id="manage-dob-day"
@@ -1064,7 +1130,7 @@ export function UsersPage() {
                 </select>
               </div>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-1">
               <Label htmlFor="manage-gender">Gender</Label>
               <select
                 id="manage-gender"
@@ -1072,12 +1138,159 @@ export function UsersPage() {
                 onChange={(e) => setManageGender(e.target.value)}
                 className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
               >
-                <option value="">Select your gender</option>
+                <option value="">Select gender</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
                 <option value="Other">Other</option>
                 <option value="Prefer not to say">Prefer not to say</option>
               </select>
+            </div>
+            <div className="space-y-2">
+              <Label>Best for Mood</Label>
+              <div className="flex flex-wrap items-center gap-2 pb-2">
+                {moodsLoading && <span className="text-sm text-gray-500">Loading moods...</span>}
+                {!moodsLoading && moodsError && (
+                  <span className="text-sm text-red-500">{moodsError}</span>
+                )}
+                {!moodsLoading && !moodsError && moods.length === 0 && (
+                  <span className="text-sm text-gray-500">No moods available</span>
+                )}
+                {!moodsLoading && moods.length > 0 && (
+                  <div className="flex flex-wrap gap-2 max-w-full">
+                    {moods.map((mood) => {
+                      const selected = manageSelectedMoodIds.includes(mood.id);
+                      return (
+                        <button
+                          type="button"
+                          key={mood.id}
+                          onClick={() => {
+                            setManageSelectedMoodIds((prev) =>
+                              prev.includes(mood.id)
+                                ? prev.filter((id) => id !== mood.id)
+                                : [...prev, mood.id]
+                            );
+                          }}
+                          className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
+                          style={{
+                            backgroundColor: selected ? '#06B3C4' : '#FFFFFF',
+                            borderColor: '#06B3C4',
+                          }}
+                        >
+                          {mood.icon ? (
+                            <img
+                              src={mood.icon}
+                              alt={mood.name}
+                              className="h-6 w-6 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="h-6 w-6 rounded-full"
+                              style={{ backgroundColor: mood.color || '#06B3C4' }}
+                            />
+                          )}
+                          <span className="whitespace-nowrap">{mood.name || 'Mood'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Best for Style</Label>
+              <div className="flex flex-wrap items-center gap-2 pb-2">
+                {stylesLoading && <span className="text-sm text-gray-500">Loading styles...</span>}
+                {!stylesLoading && stylesError && (
+                  <span className="text-sm text-red-500">{stylesError}</span>
+                )}
+                {!stylesLoading && !stylesError && styles.length === 0 && (
+                  <span className="text-sm text-gray-500">No styles available</span>
+                )}
+                {!stylesLoading && styles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 max-w-full">
+                    {styles.map((style) => {
+                      const selected = manageSelectedStyleIds.includes(style.id);
+                      return (
+                        <button
+                          type="button"
+                          key={style.id}
+                          onClick={() => {
+                            setManageSelectedStyleIds((prev) =>
+                              prev.includes(style.id)
+                                ? prev.filter((id) => id !== style.id)
+                                : [...prev, style.id]
+                            );
+                          }}
+                          className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
+                          style={{
+                            backgroundColor: selected ? '#06B3C4' : '#FFFFFF',
+                            borderColor: '#06B3C4',
+                          }}
+                        >
+                          {style.icon ? (
+                            <img
+                              src={style.icon}
+                              alt={style.name}
+                              className="h-6 w-6 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div
+                              className="h-6 w-6 rounded-full"
+                              style={{ backgroundColor: style.color || '#06B3C4' }}
+                            />
+                          )}
+                          <span className="whitespace-nowrap">{style.name || 'Style'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="border border-[#E5E7EB] rounded-lg p-4 space-y-4">
+              <div className="text-sm font-semibold text-gray-700 tracking-wide text-center">
+                EMERGENCY DETAILS
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manage-emergency-name">Emergency Contact Name</Label>
+                <Input
+                  id="manage-emergency-name"
+                  type="text"
+                  placeholder="Contact name"
+                  value={manageEmergencyName}
+                  onChange={(e) => setManageEmergencyName(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manage-emergency-relationship">Emergency Relationship</Label>
+                <Input
+                  id="manage-emergency-relationship"
+                  type="text"
+                  placeholder="Relationship"
+                  value={manageEmergencyRelationship}
+                  onChange={(e) => setManageEmergencyRelationship(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manage-emergency-contact">Emergency Contact Number</Label>
+                <Input
+                  id="manage-emergency-contact"
+                  type="tel"
+                  placeholder="Contact number"
+                  value={manageEmergencyContactNo}
+                  onChange={(e) => setManageEmergencyContactNo(e.target.value)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="manage-emergency-email">Emergency Email</Label>
+                <Input
+                  id="manage-emergency-email"
+                  type="email"
+                  placeholder="contact@email.com"
+                  value={manageEmergencyEmail}
+                  onChange={(e) => setManageEmergencyEmail(e.target.value)}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter className="flex justify-end gap-2 mt-4">
@@ -1096,6 +1309,54 @@ export function UsersPage() {
               onClick={handleSaveUser}
             >
               Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setDeleteDialogOpen(false);
+            setDeleteUserId('');
+            setDeleteUserName('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Delete User</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-[#06B3C4]">{deleteUserName || 'this user'}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              onClick={() => {
+                if (!deleteLoading) {
+                  setDeleteDialogOpen(false);
+                  setDeleteUserId('');
+                  setDeleteUserName('');
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              disabled={!deleteUserId || deleteLoading}
+              onClick={() => {
+                if (!deleteUserId) return;
+                handleDeleteUser(deleteUserId);
+              }}
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

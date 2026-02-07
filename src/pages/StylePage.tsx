@@ -38,6 +38,10 @@ export function StylePage() {
   const [manageStyleUserInputImage, setManageStyleUserInputImage] = useState('');
   const [manageStyleIconFile, setManageStyleIconFile] = useState<File | null>(null);
   const [manageStyleImageFile, setManageStyleImageFile] = useState<File | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteStyleId, setDeleteStyleId] = useState('');
+  const [deleteStyleName, setDeleteStyleName] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
   const API_TOKEN = import.meta.env.VITE_API_TOKEN;
@@ -69,9 +73,12 @@ export function StylePage() {
       const list = data?.data?.data || data?.data || data || [];
       const transformed = Array.isArray(list) ? list.map(mapApiStyle) : [];
       setDisplayStyles(transformed);
+      showToast('Styles loaded from API successfully!');
     } catch (err) {
       console.error('Failed to fetch styles', err);
-      setApiError(err instanceof Error ? err.message : 'Failed to fetch styles');
+      const message = err instanceof Error ? err.message : 'Failed to fetch styles';
+      setApiError(message);
+      showToast(message, 'error');
       setDisplayStyles(styles);
     }
     setIsLoading(false);
@@ -190,30 +197,40 @@ export function StylePage() {
     }
   };
 
-  const handleDeleteStyle = async (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete "${name}"?`)) {
-      try {
-        const response = await fetch(`${STYLES_BASE}/delete-style/${id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.message || 'Failed to delete style');
-        }
-        showToast('Style deleted successfully!');
-        fetchStylesFromAPI();
-        if (activeActionStyle?.id === id) {
-          setActiveActionStyle(null);
-          setManageStyleName('');
-          setManageStyleImage('');
-          setManageStyleUserInputImage('');
-        }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to delete style';
-        showToast(message, 'error');
+  const handleDeleteStyle = async (id: string) => {
+    setDeleteLoading(true);
+    try {
+      const response = await fetch(`${STYLES_BASE}/delete-style/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to delete style');
       }
+      showToast('Style deleted successfully!');
+      fetchStylesFromAPI();
+      if (activeActionStyle?.id === id) {
+        setActiveActionStyle(null);
+        setManageStyleName('');
+        setManageStyleImage('');
+        setManageStyleUserInputImage('');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete style';
+      showToast(message, 'error');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      setDeleteStyleId('');
+      setDeleteStyleName('');
     }
+  };
+
+  const handleRequestDeleteStyle = (id: string, name: string) => {
+    setDeleteStyleId(id);
+    setDeleteStyleName(name);
+    setDeleteDialogOpen(true);
   };
 
   // Combined manage dialog handlers
@@ -543,7 +560,7 @@ export function StylePage() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleDeleteStyle(String(style.id), style.name)}
+                            onClick={() => handleRequestDeleteStyle(String(style.id), style.name)}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
                             style={{ backgroundColor: '#06B3C4' }}
                           >
@@ -738,6 +755,54 @@ export function StylePage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setDeleteDialogOpen(false);
+            setDeleteStyleId('');
+            setDeleteStyleName('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Delete Style</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-[#06B3C4]">{deleteStyleName || 'this style'}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              onClick={() => {
+                if (!deleteLoading) {
+                  setDeleteDialogOpen(false);
+                  setDeleteStyleId('');
+                  setDeleteStyleName('');
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              disabled={!deleteStyleId || deleteLoading}
+              onClick={() => {
+                if (!deleteStyleId) return;
+                handleDeleteStyle(deleteStyleId);
+              }}
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

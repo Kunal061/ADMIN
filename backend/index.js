@@ -31,6 +31,10 @@ app.use("/api/styles", styleRoutes);
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
 
+// Trips proxy route
+const tripRoutes = require("./routes/tripRoutes");
+app.use("/api/admin/trips", tripRoutes);
+
 // START SERVER
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {

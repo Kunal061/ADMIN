@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { User, Lock, Save, X, LogOut, Settings } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
-import { storage } from '@/lib/storage';
+import { resetPassword, sendOtp } from '@/lib/forgotPasswordApi';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,30 +15,77 @@ import {
 } from '@/components/ui/dialog';
 
 const tealStyle = { backgroundColor: '#06B3C4' };
-const tealBorderStyle = { borderColor: '#06B3C4', color: '#06B3C4' };
 
 export function ProfileSection() {
   const { currentUser, updateUser, logout, showToast } = useApp();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
-  const [name, setName] = useState(currentUser.name);
+  const [firstName, setFirstName] = useState(currentUser.name.split(' ')[0] || '');
+  const [lastName, setLastName] = useState(currentUser.name.split(' ').slice(1).join(' '));
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [otpSent, setOtpSent] = useState(false);
+  const [otpCode, setOtpCode] = useState('');
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [nameSaving, setNameSaving] = useState(false);
 
-  const handleSaveName = () => {
-    if (name.trim()) {
-      updateUser({ name: name.trim() });
-      showToast('Name updated successfully!');
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
+  const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN;
+
+  const getAuthToken = () => {
+    if (API_TOKEN) return API_TOKEN;
+    try {
+      return localStorage.getItem('roamana_api_token');
+    } catch {
+      return null;
     }
   };
 
-  const handleResetPassword = () => {
+  const handleSaveName = async () => {
+    const combinedName = [firstName.trim(), lastName.trim()].filter(Boolean).join(' ');
+    if (!combinedName) return;
+    const token = getAuthToken();
+    if (!API_BASE_URL || !token || !currentUser.id) {
+      showToast('Unable to update name. Missing API configuration.', 'error');
+      return;
+    }
+    setNameSaving(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/admin/users/${currentUser.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          firstName: firstName.trim() || undefined,
+          lastName: lastName.trim() || undefined,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || data?.error || 'Failed to update name');
+      }
+      updateUser({ name: combinedName });
+      showToast('Name updated successfully!');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update name';
+      showToast(message, 'error');
+    } finally {
+      setNameSaving(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
     setPasswordError('');
-    if (currentPassword.length < 6) {
-      setPasswordError('Current password must be at least 6 characters');
+    if (!otpSent) {
+      setPasswordError('Please send an OTP to continue.');
+      return;
+    }
+    if (!otpCode.trim()) {
+      setPasswordError('Please enter the OTP sent to your email.');
       return;
     }
     if (newPassword.length < 6) {
@@ -49,15 +96,38 @@ export function ProfileSection() {
       setPasswordError('New passwords do not match');
       return;
     }
-    storage.updateRegisteredUserInfo(currentUser.email, { password: newPassword });
-    setCurrentPassword('');
+    const result = await resetPassword(currentUser.email, otpCode.trim(), newPassword);
+    if (!result.success) {
+      setPasswordError(result.message || 'Failed to reset password.');
+      return;
+    }
     setNewPassword('');
     setConfirmPassword('');
-    showToast('Password reset successfully!');
+    setOtpCode('');
+    setOtpSent(false);
+    showToast(result.message || 'Password reset successfully!');
+  };
+
+  const handleSendOtp = async () => {
+    setPasswordError('');
+    setOtpLoading(true);
+    const result = await sendOtp(currentUser.email);
+    if (result.success) {
+      setOtpSent(true);
+      showToast(result.message || 'OTP sent successfully!');
+    } else {
+      setPasswordError(result.message || 'Failed to send OTP.');
+    }
+    setOtpLoading(false);
   };
 
   const openAccountSettings = () => {
-    setName(currentUser.name);
+  const nameParts = currentUser.name.split(' ').filter(Boolean);
+  setFirstName(nameParts[0] || '');
+  setLastName(nameParts.slice(1).join(' '));
+    setOtpSent(false);
+    setOtpCode('');
+    setPasswordError('');
     setProfileOpen(true);
     setDropdownOpen(false);
   };
@@ -148,36 +218,55 @@ export function ProfileSection() {
                 <h3 className="text-lg font-semibold text-gray-900 font-heading">Change Name</h3>
               </div>
               <div className="space-y-3 pl-7">
-                <div className="space-y-1.5">
-                  <Label htmlFor="profile-name" className="text-sm">Full Name</Label>
-                  <Input
-                    id="profile-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter your full name"
-                    className="border-gray-200"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <Button
-                    onClick={handleSaveName}
-                    disabled={!name.trim() || name === currentUser.name}
-                    className="h-9 px-4 text-sm text-white font-medium"
-                    style={tealStyle}
-                  >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save
-                  </Button>
-                  {name !== currentUser.name && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-first-name" className="text-sm">First Name</Label>
+                      <Input
+                        id="profile-first-name"
+                        value={firstName}
+                        onChange={(e) => setFirstName(e.target.value)}
+                        placeholder="First name"
+                        className="border-gray-200"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="profile-last-name" className="text-sm">Last Name</Label>
+                      <Input
+                        id="profile-last-name"
+                        value={lastName}
+                        onChange={(e) => setLastName(e.target.value)}
+                        placeholder="Last name"
+                        className="border-gray-200"
+                      />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
                     <Button
-                      onClick={() => setName(currentUser.name)}
-                      className="h-9 px-4 text-sm text-white font-medium hover:opacity-90 border-0"
+                      onClick={handleSaveName}
+                      disabled={!firstName.trim() && !lastName.trim()}
+                      className="h-9 px-4 text-sm text-white font-medium"
                       style={tealStyle}
                     >
-                      <X className="h-4 w-4 mr-2" />
-                      Cancel
+                      <Save className="h-4 w-4 mr-2" />
+                      {nameSaving ? 'Saving...' : 'Save'}
                     </Button>
-                  )}
+                    {(firstName.trim() || lastName.trim()) &&
+                      [firstName.trim(), lastName.trim()].filter(Boolean).join(' ') !== currentUser.name && (
+                      <Button
+                        onClick={() => {
+                          const nameParts = currentUser.name.split(' ').filter(Boolean);
+                          setFirstName(nameParts[0] || '');
+                          setLastName(nameParts.slice(1).join(' '));
+                        }}
+                        className="h-9 px-4 text-sm text-white font-medium hover:opacity-90 border-0"
+                        style={tealStyle}
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
@@ -194,15 +283,27 @@ export function ProfileSection() {
                 </p>
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="profile-current-password" className="text-gray-700">Current Password</Label>
-                    <Input
-                      id="profile-current-password"
-                      type="password"
-                      value={currentPassword}
-                      onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="••••••••"
-                      className="border-gray-200"
-                    />
+                    <Label htmlFor="profile-otp" className="text-gray-700">OTP</Label>
+                    <div className="flex items-center gap-2">
+                      {otpSent && (
+                        <Input
+                          id="profile-otp"
+                          value={otpCode}
+                          onChange={(e) => setOtpCode(e.target.value)}
+                          placeholder="Enter OTP"
+                          className="border-gray-200 flex-1"
+                        />
+                      )}
+                      <Button
+                        type="button"
+                        onClick={handleSendOtp}
+                        className="h-9 px-4 text-sm text-white font-medium"
+                        style={tealStyle}
+                        disabled={otpLoading}
+                      >
+                        {otpLoading ? 'Sending...' : 'Send OTP'}
+                      </Button>
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="profile-new-password" className="text-gray-700">New Password</Label>

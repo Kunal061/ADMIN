@@ -41,6 +41,10 @@ export function MoodPage() {
   const [manageMoodIconPreview, setManageMoodIconPreview] = useState('');
   const [manageMoodColor, setManageMoodColor] = useState('#000000');
   const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteMoodId, setDeleteMoodId] = useState('');
+  const [deleteMoodName, setDeleteMoodName] = useState('');
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
   const addMoodUserInputImageRef = useRef<HTMLInputElement>(null);
@@ -82,6 +86,7 @@ export function MoodPage() {
       const list = data?.data?.data || data?.data || data || [];
       const transformed = Array.isArray(list) ? list.map(mapApiMood) : [];
       setMoods(transformed);
+  showToast('Moods loaded from API successfully!');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch moods';
       setApiError(message);
@@ -173,31 +178,41 @@ export function MoodPage() {
     }
   };
 
-  const handleDeleteMood = async (id: string, name: string) => {
-    if (confirm(`Are you sure you want to delete "${name}"?`)) {
-      try {
-        const response = await fetch(`${MOODS_BASE}/delete-mood/${id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.message || 'Failed to delete mood');
-        }
-        showToast('Mood deleted successfully!');
-        if (activeActionMood?.id === id) {
-          setActiveActionMood(null);
-          setManageMoodName('');
-          setManageMoodIconPreview('');
-          setManageMoodIconFile(null);
-          setManageMoodIsActive(false);
-        }
-        fetchMoodsFromAPI();
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to delete mood';
-        showToast(message, 'error');
+  const handleDeleteMood = async (id: string) => {
+    setDeleteLoading(true);
+    try {
+      const response = await fetch(`${MOODS_BASE}/delete-mood/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.message || 'Failed to delete mood');
       }
+      showToast('Mood deleted successfully!');
+      if (activeActionMood?.id === id) {
+        setActiveActionMood(null);
+        setManageMoodName('');
+        setManageMoodIconPreview('');
+        setManageMoodIconFile(null);
+        setManageMoodIsActive(false);
+      }
+      fetchMoodsFromAPI();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete mood';
+      showToast(message, 'error');
+    } finally {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+      setDeleteMoodId('');
+      setDeleteMoodName('');
     }
+  };
+
+  const handleRequestDeleteMood = (id: string, name: string) => {
+    setDeleteMoodId(id);
+    setDeleteMoodName(name);
+    setDeleteDialogOpen(true);
   };
 
   // Combined manage dialog handlers
@@ -552,7 +567,7 @@ export function MoodPage() {
                           </Button>
                           <Button
                             size="sm"
-                            onClick={() => handleDeleteMood(String(mood.id), mood.name)}
+                            onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
                             className="h-7 w-7 p-0 hover:opacity-90 border-0"
                             style={{ backgroundColor: '#06B3C4' }}
                           >
@@ -752,6 +767,54 @@ export function MoodPage() {
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog
+        open={deleteDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteLoading) {
+            setDeleteDialogOpen(false);
+            setDeleteMoodId('');
+            setDeleteMoodName('');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Delete Mood</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-[#06B3C4]">{deleteMoodName || 'this mood'}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              onClick={() => {
+                if (!deleteLoading) {
+                  setDeleteDialogOpen(false);
+                  setDeleteMoodId('');
+                  setDeleteMoodName('');
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              disabled={!deleteMoodId || deleteLoading}
+              onClick={() => {
+                if (!deleteMoodId) return;
+                handleDeleteMood(deleteMoodId);
+              }}
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

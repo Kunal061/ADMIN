@@ -5,8 +5,9 @@ import {
   Calendar,
   Trash2,
   Edit,
-  X,
-  Search
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { storage } from '@/lib/storage';
@@ -23,7 +24,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import type { Trip } from '@/types';
+import type { Trip, TripUser } from '@/types';
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
@@ -140,6 +141,10 @@ const mapTripFromApi = (apiTrip: unknown, index: number): Trip => {
     startDate: getString(trip.startDate ?? trip.start_date ?? trip.start, ''),
     endDate: getString(trip.endDate ?? trip.end_date ?? trip.end, ''),
     coverImage: getString(trip.coverImage ?? trip.wallpaper ?? journal.wallpaper, ''),
+    type: getString(trip.type ?? overview.type, 'public'),
+    isFeatured: Boolean(trip.isFeatured),
+    overviewType: getString(overview.type, ''),
+    overviewNotes: getString(overview.notes, ''),
     itinerary: normalizeApiItinerary(trip.itinerary ?? trip.dayWiseItinerary),
     moods: Array.isArray(mood.moods) ? mood.moods.map(item => getString(item, '')).filter(Boolean) : undefined,
     styles: Array.isArray(style.styles) ? style.styles.map(item => getString(item, '')).filter(Boolean) : undefined,
@@ -170,6 +175,8 @@ export function TripPage() {
   const [selectedTrip, setSelectedTrip] = useState<Trip | null>(null);
   const [tripDialogOpen, setTripDialogOpen] = useState(false);
   const [editTripDialogOpen, setEditTripDialogOpen] = useState(false);
+  const [createTripStep, setCreateTripStep] = useState<number>(1);
+  const [editTripStep, setEditTripStep] = useState<number>(1);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
   const [moodSelectionDialogOpen, setMoodSelectionDialogOpen] = useState(false);
   const [styleSelectionDialogOpen, setStyleSelectionDialogOpen] = useState(false);
@@ -178,11 +185,19 @@ export function TripPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [editParticipantSearchQuery, setEditParticipantSearchQuery] = useState('');
   const [newTripParticipantSearchQuery, setNewTripParticipantSearchQuery] = useState('');
+  const [deleteTripDialogOpen, setDeleteTripDialogOpen] = useState(false);
+  const [deleteTripTarget, setDeleteTripTarget] = useState<Trip | null>(null);
+  const [deleteTripLoading, setDeleteTripLoading] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
   const hasRefreshedTripsRef = useRef(false);
   const hasFetchedTripsFromApiRef = useRef(false);
-  const isStyleActive = (style?: { isActive?: boolean } | null) => style?.isActive !== false;
-  const moodOptions = moods;
-  const styleOptions = styles;
+  const isStyleActive = useCallback((style?: { isActive?: boolean } | null) => style?.isActive !== false, []);
+  const [apiMoods, setApiMoods] = useState<typeof moods>([]);
+  const [apiStyles, setApiStyles] = useState<typeof styles>([]);
+  const [apiTripUsers, setApiTripUsers] = useState<TripUser[]>([]);
+  const moodOptions = apiMoods.length > 0 ? apiMoods : moods;
+  const styleOptions = apiStyles.length > 0 ? apiStyles : styles;
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
   const storedToken = typeof window !== 'undefined' ? localStorage.getItem('roamana_api_token') : null;
@@ -197,6 +212,122 @@ export function TripPage() {
     return headers;
   }, [API_TOKEN]);
   const shouldUseApi = Boolean(API_BASE_URL);
+  const isObjectId = useCallback((value: string) => /^[a-f\d]{24}$/i.test(value), []);
+
+  useEffect(() => {
+    if (!API_BASE_URL) return;
+
+    const controller = new AbortController();
+
+    const fetchTripUsers = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/users`, {
+          headers: getAuthHeaders(),
+          signal: controller.signal,
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) return;
+
+        const list = data?.data?.data || data?.data || data || [];
+        const mapped = Array.isArray(list)
+          ? list.map((user: unknown) => {
+              const userRecord = user && typeof user === 'object' ? (user as Record<string, unknown>) : {};
+              const id = String(userRecord.id || userRecord._id || '');
+              const firstName = String(userRecord.firstName || '').trim();
+              const lastName = String(userRecord.lastName || '').trim();
+              const fullName = String(userRecord.fullName || '').trim();
+              const nameParts = fullName ? fullName.split(' ') : [];
+              const resolvedFirstName = firstName || nameParts[0] || '';
+              const resolvedLastName = lastName || nameParts.slice(1).join(' ') || '';
+
+              return {
+                id,
+                firstName: resolvedFirstName,
+                lastName: resolvedLastName,
+                email: String(userRecord.emailAddress || userRecord.email || ''),
+                phone: typeof userRecord.mobileNo === 'string' ? userRecord.mobileNo : undefined,
+                dateOfBirth: typeof userRecord.dob === 'string' ? userRecord.dob : undefined,
+                gender: typeof userRecord.gender === 'string' ? userRecord.gender : undefined,
+              } as TripUser;
+            })
+            .filter(user => user.id)
+          : [];
+
+        setApiTripUsers(mapped);
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+      }
+    };
+
+    fetchTripUsers();
+
+    return () => controller.abort();
+  }, [API_BASE_URL, getAuthHeaders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, trips.length]);
+
+  useEffect(() => {
+    if (!API_BASE_URL) return;
+
+    const controller = new AbortController();
+
+    const fetchMoodsAndStyles = async () => {
+      try {
+        const [moodsResponse, stylesResponse] = await Promise.all([
+          fetch(`${API_BASE_URL}/moods/get-all-moods`, {
+            headers: getAuthHeaders(),
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE_URL}/styles/get-all-styles`, {
+            headers: getAuthHeaders(),
+            signal: controller.signal,
+          }),
+        ]);
+
+        const moodsData = await moodsResponse.json().catch(() => ({}));
+        const stylesData = await stylesResponse.json().catch(() => ({}));
+
+        if (moodsResponse.ok) {
+          const list = moodsData?.data?.data || moodsData?.data || moodsData || [];
+          const transformed = Array.isArray(list)
+            ? list.map((mood: any) => ({
+                id: String(mood.id || mood._id),
+                name: mood.moodName || mood.name || '',
+                description: mood.description || '',
+                icon: mood.icon || mood.image || '',
+                image: mood.image || mood.icon || undefined,
+                isActive: mood.isActive ?? true,
+                moodImage: mood.moodImage || undefined,
+              }))
+            : [];
+          setApiMoods(transformed);
+        }
+
+        if (stylesResponse.ok) {
+          const list = stylesData?.data?.data || stylesData?.data || stylesData || [];
+          const transformed = Array.isArray(list)
+            ? list.map((style: any) => ({
+                id: String(style.id || style._id),
+                name: style.styleName || style.name || '',
+                icon: style.icon || style.image || undefined,
+                image: style.image || style.icon || undefined,
+                isActive: style.isActive ?? true,
+              }))
+            : [];
+          setApiStyles(transformed);
+        }
+      } catch (err) {
+        if ((err as Error).name === 'AbortError') return;
+        // Silent fallback to context data
+      }
+    };
+
+    fetchMoodsAndStyles();
+
+    return () => controller.abort();
+  }, [API_BASE_URL, getAuthHeaders]);
 
   useEffect(() => {
     if (!shouldUseApi || hasFetchedTripsFromApiRef.current) {
@@ -267,33 +398,36 @@ export function TripPage() {
 
   // Clean up selectedMoods to remove any inactive moods
   useEffect(() => {
-    setSelectedMoods(prev => 
-      prev.filter(moodId => {
-        const mood = moods.find(m => m.id === moodId);
+    setSelectedMoods(prev => {
+      const next = prev.filter(moodId => {
+        const mood = moodOptions.find(m => m.id === moodId);
         return mood && mood.isActive;
-      })
-    );
-  }, [moods]);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [moodOptions]);
 
   // Clean up selectedStyles to remove any inactive styles
   useEffect(() => {
-    setSelectedStyles(prev => 
-      prev.filter(styleId => {
-        const style = styles.find(s => s.id === styleId);
+    setSelectedStyles(prev => {
+      const next = prev.filter(styleId => {
+        const style = styleOptions.find(s => s.id === styleId);
         return isStyleActive(style);
-      })
-    );
-  }, [styles]);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [styleOptions, isStyleActive]);
 
   // Clean up editingSelectedMoods to remove any inactive moods
   useEffect(() => {
-    setEditingSelectedMoods(prev =>
-      prev.filter(moodId => {
-        const mood = moods.find(m => m.id === moodId);
+    setEditingSelectedMoods(prev => {
+      const next = prev.filter(moodId => {
+        const mood = moodOptions.find(m => m.id === moodId);
         return mood && mood.isActive;
-      })
-    );
-  }, [moods]);
+      });
+      return next.length === prev.length ? prev : next;
+    });
+  }, [moodOptions]);
 
   // New trip form state
   const [newTrip, setNewTrip] = useState<{
@@ -305,6 +439,10 @@ export function TripPage() {
     coverImage: string;
     status: 'Active' | 'Inactive';
     participantIds: string[];
+    type: 'public' | 'private' | 'invite-only';
+    isFeatured: boolean;
+    overviewType: string;
+    overviewNotes: string;
   }>({
     title: '',
     description: '',
@@ -314,6 +452,10 @@ export function TripPage() {
     coverImage: '',
     status: 'Active',
     participantIds: [],
+    type: 'public',
+    isFeatured: false,
+    overviewType: '',
+    overviewNotes: '',
   });
 
   // Day-wise itinerary state for new trip
@@ -336,13 +478,11 @@ export function TripPage() {
   
   // Places state
   const [places, setPlaces] = useState<Array<{ name: string; image: string; mapLink?: string }>>([]);
-  const [newPlace, setNewPlace] = useState({ name: '', image: '', imageName: '' });
-  const placeImageInputRef = useRef<HTMLInputElement | null>(null);
 
   // Cover image upload state
-  const [coverImageName, setCoverImageName] = useState('');
   const coverInputRef = useRef<HTMLInputElement | null>(null);
   const editCoverInputRef = useRef<HTMLInputElement | null>(null);
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
 
   // Handle cover image upload (convert to data URL for persistence)
   const handleCoverImageUpload = (file: File | null) => {
@@ -352,7 +492,6 @@ export function TripPage() {
       const result = reader.result;
       if (typeof result === 'string') {
         setNewTrip(prev => ({ ...prev, coverImage: result }));
-        setCoverImageName(file.name);
       }
     };
     reader.readAsDataURL(file);
@@ -360,7 +499,6 @@ export function TripPage() {
 
   const handleClearCoverImage = () => {
     setNewTrip(prev => ({ ...prev, coverImage: '' }));
-    setCoverImageName('');
     if (coverInputRef.current) {
       coverInputRef.current.value = '';
     }
@@ -373,6 +511,7 @@ export function TripPage() {
       const result = reader.result;
       if (typeof result === 'string') {
         setEditingTrip(prev => (prev ? { ...prev, coverImage: result } : null));
+        setEditCoverFile(file);
       }
     };
     reader.onerror = () => {
@@ -381,17 +520,6 @@ export function TripPage() {
     reader.readAsDataURL(file);
   };
 
-  const handlePlaceImageUpload = (file: File | null) => {
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result;
-      if (typeof result === 'string') {
-        setNewPlace(prev => ({ ...prev, image: result, imageName: file.name }));
-      }
-    };
-    reader.readAsDataURL(file);
-  };
 
   // Helper to compute number of days between two dates (inclusive)
   const getDaysCount = (startDate: string, endDate: string): number => {
@@ -481,17 +609,18 @@ export function TripPage() {
       .map(id => moodOptions.find(m => m.id === id)?.name)
       .filter(Boolean) as string[];
 
-    const createdAtIso = new Date().toISOString();
+    const createdBy = auth.user?.id && isObjectId(auth.user.id) ? auth.user.id : undefined;
+    const memberIds = (newTrip.participantIds ?? []).filter(isObjectId);
     const apiPayload = {
       tripName: newTrip.title.trim(),
-      type: 'public',
+      type: newTrip.type,
       startDate: new Date(newTrip.startDate).toISOString(),
       endDate: new Date(newTrip.endDate).toISOString(),
-      createdBy: auth.user?.id ?? 'admin',
-      members: newTrip.participantIds ?? [],
+      ...(createdBy ? { createdBy } : {}),
+      members: memberIds,
       mood: {
         moods: moodNames,
-        badges: [],
+        badges: activeSelectedMoods,
       },
       itinerary: formattedItinerary.reduce<Record<string, { title: string; itinerary: string }>>(
         (acc, day) => {
@@ -503,39 +632,28 @@ export function TripPage() {
         },
         {}
       ),
-      isFeatured: false,
-      isDraft: false,
-      wallpaper: newTrip.coverImage || undefined,
-      bookmarkedBy: [],
-      journal: {
-        title: newTrip.title.trim(),
-        notes: [],
-        media: [],
-        wallpaper: newTrip.coverImage || undefined,
-        createdAt: createdAtIso,
-        updatedAt: createdAtIso,
-      },
-      memberRequests: [],
+  isFeatured: newTrip.isFeatured,
+      wallpaper: newTrip.coverImage || null,
       locations: formattedPlaces.map(place => ({
+        placeId: place.id,
         name: place.name,
-        address: place.name,
         country: '',
         latitude: undefined,
         longitude: undefined,
         photoUrl: place.image,
+        address: place.name,
       })),
-      createdAt: createdAtIso,
-      updatedAt: createdAtIso,
       overview: {
         name: newTrip.title.trim(),
+        type: newTrip.overviewType.trim() || newTrip.destination.trim() || 'adventure',
         summary: newTrip.description?.trim() || newTrip.destination.trim(),
-        notes: '',
+        notes: newTrip.overviewNotes.trim(),
       },
     };
 
-    if (API_BASE_URL && API_TOKEN) {
+    if (API_BASE_URL) {
       try {
-        const response = await fetch(`${API_BASE_URL}/trips`, {
+        const response = await fetch(`${API_BASE_URL}/admin/trips`, {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify(apiPayload),
@@ -571,16 +689,16 @@ export function TripPage() {
       coverImage: '',
       status: 'Active',
       participantIds: [],
+      type: 'public',
+      isFeatured: false,
+      overviewType: '',
+      overviewNotes: '',
     });
     setNewTripParticipantSearchQuery('');
     setDayWiseItinerary([]);
     setSelectedMoods([]);
     setSelectedStyles([]);
     setPlaces([]);
-    setNewPlace({ name: '', image: '', imageName: '' });
-    if (placeImageInputRef.current) {
-      placeImageInputRef.current.value = '';
-    }
 
     // Close dialog
     setTripDialogOpen(false);
@@ -610,9 +728,18 @@ export function TripPage() {
   };
 
   const handleEditTrip = (trip: Trip) => {
-    setEditingTrip({ ...trip, participantIds: trip.participantIds ?? [] });
+    setEditingTrip({
+      ...trip,
+      participantIds: trip.participantIds ?? [],
+      type: trip.type ?? 'public',
+      isFeatured: trip.isFeatured ?? false,
+      overviewType: trip.overviewType ?? '',
+      overviewNotes: trip.overviewNotes ?? '',
+    });
     setEditingSelectedStyles(trip.styles ?? []);
     setEditingSelectedMoods(trip.moods ?? []);
+    setEditCoverFile(null);
+    setEditTripStep(1);
     setEditTripDialogOpen(true);
   };
 
@@ -699,7 +826,7 @@ export function TripPage() {
     }
   }, [editingTrip?.id, editingTrip?.moods]);
 
-  const handleUpdateTrip = () => {
+  const handleUpdateTrip = async () => {
     if (!editingTrip) return;
 
     let nextItinerary = editingTrip.itinerary || [];
@@ -719,15 +846,96 @@ export function TripPage() {
 
     // Filter editingSelectedStyles to only include active ones
     const activeEditingSelectedStyles = editingSelectedStyles.filter(styleId => {
-      const style = styles.find(s => s.id === styleId);
+      const style = styleOptions.find(s => s.id === styleId);
       return isStyleActive(style);
     });
 
     // Filter editingSelectedMoods to only include active ones
     const activeEditingSelectedMoods = editingSelectedMoods.filter(moodId => {
-      const mood = moods.find(m => m.id === moodId);
+      const mood = moodOptions.find(m => m.id === moodId);
       return mood && mood.isActive;
     });
+
+    const moodNames = activeEditingSelectedMoods
+      .map(id => moodOptions.find(m => m.id === id)?.name)
+      .filter(Boolean) as string[];
+
+    const memberIds = (editingTrip.participantIds ?? []).filter(isObjectId);
+    const formattedPlaces = (editingTrip.places ?? []).map(place => ({
+      placeId: place.id,
+      name: place.name,
+      country: '',
+      latitude: undefined,
+      longitude: undefined,
+      photoUrl: place.image,
+      address: place.name,
+    }));
+
+    const apiPayload = {
+      tripName: editingTrip.title.trim(),
+      type: editingTrip.type ?? 'public',
+      startDate: editingTrip.startDate ? new Date(editingTrip.startDate).toISOString() : undefined,
+      endDate: editingTrip.endDate ? new Date(editingTrip.endDate).toISOString() : undefined,
+      isFeatured: editingTrip.isFeatured ?? false,
+      members: memberIds,
+      mood: {
+        moods: moodNames,
+        badges: activeEditingSelectedMoods,
+      },
+      itinerary: nextItinerary.reduce<Record<string, { title: string; itinerary: string }>>(
+        (acc, day) => {
+          acc[String(day.day)] = {
+            title: day.title,
+            itinerary: day.description || '',
+          };
+          return acc;
+        },
+        {}
+      ),
+      locations: formattedPlaces,
+      overview: {
+        name: editingTrip.title.trim(),
+        type: (editingTrip.overviewType ?? '').trim() || editingTrip.destination.trim() || 'adventure',
+        summary: editingTrip.description?.trim() || editingTrip.destination.trim(),
+        notes: (editingTrip.overviewNotes ?? '').trim(),
+      },
+    };
+
+    if (API_BASE_URL && isObjectId(editingTrip.id)) {
+      try {
+        if (editCoverFile) {
+          const formData = new FormData();
+          formData.append('wallpaper', editCoverFile);
+
+          const headers = getAuthHeaders();
+          delete headers['Content-Type'];
+
+          const response = await fetch(`${API_BASE_URL}/admin/trips/${editingTrip.id}`, {
+            method: 'PUT',
+            headers,
+            body: formData,
+          });
+          const data = await response.json().catch(() => ({}));
+          if (!response.ok) {
+            throw new Error(data?.message || 'Failed to update trip wallpaper');
+          }
+        }
+
+        const response = await fetch(`${API_BASE_URL}/admin/trips/${editingTrip.id}`, {
+          method: 'PUT',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(apiPayload),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || 'Failed to update trip');
+        }
+        showToast('Trip updated in API successfully!');
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to update trip in API', 'error');
+        return;
+      }
+    }
 
     updateTrip(editingTrip.id, {
       ...editingTrip,
@@ -741,9 +949,52 @@ export function TripPage() {
     setEditingTrip(null);
   };
 
+  const handleDeleteTrip = async (trip: Trip) => {
+    setDeleteTripLoading(true);
+    if (API_BASE_URL && isObjectId(trip.id)) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/trips/${trip.id}`, {
+          method: 'DELETE',
+          headers: getAuthHeaders(),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(data?.message || 'Failed to delete trip');
+        }
+      } catch (err) {
+        showToast(err instanceof Error ? err.message : 'Failed to delete trip', 'error');
+        setDeleteTripLoading(false);
+        return;
+      }
+    }
+
+    deleteTrip(trip.id);
+    showToast('Trip deleted successfully!');
+    if (editingTrip?.id === trip.id) {
+      setEditingTrip(null);
+      setEditTripDialogOpen(false);
+    }
+    setDeleteTripLoading(false);
+    setDeleteTripDialogOpen(false);
+    setDeleteTripTarget(null);
+  };
+
+  const handleRequestDeleteTrip = (trip: Trip) => {
+    setDeleteTripTarget(trip);
+    setDeleteTripDialogOpen(true);
+  };
+
   return (
     <div className="space-y-5 font-sans w-full">
-      <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
+      <Dialog
+        open={tripDialogOpen}
+        onOpenChange={(open) => {
+          setTripDialogOpen(open);
+          if (open) {
+            setCreateTripStep(1);
+          }
+        }}
+      >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="font-heading">Create New Trip</DialogTitle>
@@ -751,68 +1002,183 @@ export function TripPage() {
                 Fill in the details to create a new trip.
               </DialogDescription>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="trip-title">
-                  Trip Title <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="trip-title"
-                  value={newTrip.title}
-                  onChange={(e) => setNewTrip(prev => ({ ...prev, title: e.target.value }))}
-                  placeholder="e.g., Mountain Adventure"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="trip-destination">
-                  Destination <span className="text-red-500">*</span>
-                </Label>
-                <Input
-                  id="trip-destination"
-                  value={newTrip.destination}
-                  onChange={(e) => setNewTrip(prev => ({ ...prev, destination: e.target.value }))}
-                  placeholder="e.g., Swiss Alps"
-                  required
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="trip-description">Description (Optional)</Label>
-                <Textarea
-                  id="trip-description"
-                  value={newTrip.description}
-                  onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Describe the trip..."
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>Step {createTripStep} of 3</span>
+            </div>
+
+            {createTripStep === 1 && (
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="trip-start">
-                    Start Date <span className="text-red-500">*</span>
+                  <Label htmlFor="trip-title">
+                    Trip Title <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="trip-start"
-                    type="date"
-                    value={newTrip.startDate}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, startDate: e.target.value }))}
+                    id="trip-title"
+                    value={newTrip.title}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, title: e.target.value }))}
+                    placeholder="e.g., Mountain Adventure"
                     required
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="trip-end">
-                    End Date <span className="text-red-500">*</span>
+                  <Label htmlFor="trip-destination">
+                    Destination <span className="text-red-500">*</span>
                   </Label>
                   <Input
-                    id="trip-end"
-                    type="date"
-                    value={newTrip.endDate}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, endDate: e.target.value }))}
+                    id="trip-destination"
+                    value={newTrip.destination}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, destination: e.target.value }))}
+                    placeholder="e.g., Swiss Alps"
                     required
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="trip-description">Description (Optional)</Label>
+                  <Textarea
+                    id="trip-description"
+                    value={newTrip.description}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Describe the trip..."
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="trip-start">
+                      Start Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="trip-start"
+                      type="date"
+                      value={newTrip.startDate}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, startDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="trip-end">
+                      End Date <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      id="trip-end"
+                      type="date"
+                      value={newTrip.endDate}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, endDate: e.target.value }))}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="trip-type">Type</Label>
+                    <select
+                      id="trip-type"
+                      value={newTrip.type}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, type: e.target.value as 'public' | 'private' | 'invite-only' }))}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                      <option value="invite-only">Invite Only</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Featured</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="trip-featured"
+                        type="checkbox"
+                        checked={newTrip.isFeatured}
+                        onChange={(e) => setNewTrip(prev => ({ ...prev, isFeatured: e.target.checked }))}
+                        className="h-4 w-4 rounded border border-gray-300 bg-white checked:bg-white checked:border-gray-300 accent-[#06B3C4]"
+                      />
+                      <Label htmlFor="trip-featured" className="text-sm text-gray-600">Mark as featured</Label>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="overview-type">Overview Type</Label>
+                    <Input
+                      id="overview-type"
+                      value={newTrip.overviewType}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, overviewType: e.target.value }))}
+                      placeholder="e.g., adventure"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="overview-notes">Overview Notes</Label>
+                    <Input
+                      id="overview-notes"
+                      value={newTrip.overviewNotes}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, overviewNotes: e.target.value }))}
+                      placeholder="Visa info, tips, etc."
+                    />
+                  </div>
+                </div>
+
+                {/* Participants */}
+                <div className="space-y-2 pt-4 border-t">
+                  <Label className="text-base font-semibold">Participants</Label>
+                  <p className="text-xs text-gray-500">Select users to add to this trip (from the Users page).</p>
+                  <Input
+                    type="text"
+                    placeholder="Search for Participants"
+                    value={newTripParticipantSearchQuery}
+                    onChange={(e) => setNewTripParticipantSearchQuery(e.target.value)}
+                    className="rounded-md border border-input"
+                  />
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
+                    {(() => {
+                      const users = apiTripUsers.length > 0 ? apiTripUsers : storage.getTripUsers();
+                      if (users.length === 0) {
+                        return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
+                      }
+                      const q = newTripParticipantSearchQuery.trim().toLowerCase();
+                      const filtered = q
+                        ? users.filter((u) => {
+                            const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
+                            return full.includes(q);
+                          })
+                        : users;
+                      if (filtered.length === 0) {
+                        return <p className="text-sm text-gray-500">No participants match your search.</p>;
+                      }
+                      return filtered.map((u) => {
+                        const isSelected = (newTrip.participantIds ?? []).includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
+                                : 'border-input bg-background hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setNewTrip(prev => ({
+                                  ...prev,
+                                  participantIds: isSelected
+                                    ? (prev.participantIds ?? []).filter(id => id !== u.id)
+                                    : [...(prev.participantIds ?? []), u.id],
+                                }));
+                              }}
+                              className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
+                            />
+                            <span>{u.firstName} {u.lastName}</span>
+                          </label>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="trip-image">Cover Image</Label>
+            )}
+
+            {createTripStep === 2 && (
+              <div className="py-8">
                 <input
                   id="trip-image"
                   ref={coverInputRef}
@@ -821,129 +1187,191 @@ export function TripPage() {
                   className="hidden"
                   onChange={(e) => handleCoverImageUpload(e.target.files?.[0] || null)}
                 />
-                <div className="flex items-center gap-3">
-                  <Button
-                    type="button"
-                    className="text-white hover:opacity-90 border-0 font-medium"
-                    style={{ backgroundColor: '#06B3C4' }}
-                    onClick={() => coverInputRef.current?.click()}
-                  >
-                    Choose File
-                  </Button>
-                  {coverImageName && (
-                    <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 text-xs text-gray-700 max-w-xs">
-                      <span className="truncate">{coverImageName}</span>
-                      <button
+                <div className="flex items-center justify-center">
+                  <div className="w-full max-w-md rounded-3xl border border-[#D7E4F3] bg-white p-6 shadow-sm">
+                    <div className="aspect-square w-full overflow-hidden rounded-2xl border border-[#D7E4F3] bg-[#A9C6F4] flex items-center justify-center">
+                      {newTrip.coverImage ? (
+                        <img
+                          src={newTrip.coverImage}
+                          alt="Trip cover"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-white text-7xl font-semibold">
+                          {(newTrip.title?.trim()?.charAt(0) || 'A').toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                      <Button
                         type="button"
-                        onClick={handleClearCoverImage}
-                        className="flex items-center justify-center rounded-full p-0.5 text-white hover:opacity-90 transition-opacity"
+                        className="text-white border-0 hover:opacity-90 rounded-full px-5"
                         style={{ backgroundColor: '#06B3C4' }}
+                        onClick={() => coverInputRef.current?.click()}
                       >
-                        <X className="h-3 w-3" />
-                      </button>
+                        {newTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
+                      </Button>
+                      {newTrip.coverImage ? (
+                        <button
+                          type="button"
+                          onClick={handleClearCoverImage}
+                          className="h-10 w-10 rounded-full text-white flex items-center justify-center hover:opacity-90"
+                          style={{ backgroundColor: '#06B3C4' }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {createTripStep === 3 && (
+              <div className="space-y-4 py-4">
+                {/* Itinerary Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Itinerary</Label>
+                  </div>
+                  {dayWiseItinerary.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      Select a start and end date to generate day-wise itinerary fields.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {dayWiseItinerary.map((day) => {
+                        const getDisplayDate = () => {
+                          if (!newTrip.startDate) return null;
+                          const start = new Date(newTrip.startDate);
+                          if (isNaN(start.getTime())) return null;
+                          const d = new Date(start);
+                          d.setDate(start.getDate() + (day.day - 1));
+                          return d.toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          });
+                        };
+
+                        const displayDate = getDisplayDate();
+
+                        return (
+                          <div key={day.id} className="space-y-2">
+                            <div className="flex items-baseline justify-between">
+                              <p className="font-semibold text-gray-900 font-heading">
+                                Day {day.day}
+                                {displayDate ? (
+                                  <span className="ml-2 text-sm font-normal text-gray-500">
+                                    {displayDate}
+                                  </span>
+                                ) : null}
+                              </p>
+                            </div>
+                            <Textarea
+                              value={day.description}
+                              onChange={(e) =>
+                                setDayWiseItinerary((prev) =>
+                                  prev.map((d) =>
+                                    d.day === day.day ? { ...d, description: e.target.value } : d
+                                  )
+                                )
+                              }
+                              placeholder={`Enter itinerary details for Day ${day.day}...`}
+                              rows={4}
+                              className="resize-y"
+                            />
+                          </div>
+                        );
+                      })}
+                      <p className="text-xs text-gray-500">
+                        Days are generated automatically based on the selected start and end dates.
+                        Updating the dates will update the days while keeping existing text where possible.
+                      </p>
                     </div>
                   )}
                 </div>
-                <p className="text-xs text-gray-500">
-                  Upload an image to use as the trip cover image.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="trip-status">Status</Label>
-                <select
-                  id="trip-status"
-                  value={newTrip.status}
-                  onChange={(e) => setNewTrip(prev => ({ ...prev, status: e.target.value as 'Active' | 'Inactive' }))}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-
-              {/* Participants */}
-              <div className="space-y-2 pt-4 border-t">
-                <Label className="text-base font-semibold">Participants</Label>
-                <p className="text-xs text-gray-500">Select users to add to this trip (from the Users page).</p>
-                <Input
-                  type="text"
-                  placeholder="Search for Participants"
-                  value={newTripParticipantSearchQuery}
-                  onChange={(e) => setNewTripParticipantSearchQuery(e.target.value)}
-                  className="rounded-md border border-input"
-                />
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
-                  {(() => {
-                    const users = storage.getTripUsers();
-                    if (users.length === 0) {
-                      return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
-                    }
-                    const q = newTripParticipantSearchQuery.trim().toLowerCase();
-                    const filtered = q
-                      ? users.filter((u) => {
-                          const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
-                          return full.includes(q);
-                        })
-                      : users;
-                    if (filtered.length === 0) {
-                      return <p className="text-sm text-gray-500">No participants match your search.</p>;
-                    }
-                    return filtered.map((u) => {
-                      const isSelected = (newTrip.participantIds ?? []).includes(u.id);
-                      return (
-                        <label
-                          key={u.id}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
-                              : 'border-input bg-background hover:bg-gray-50'
-                          }`}
+                {/* Mood Selection Section */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Best for Mood</Label>
+                    <Dialog open={moodSelectionDialogOpen} onOpenChange={setMoodSelectionDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
+                          style={{ backgroundColor: '#06B3C4' }}
                         >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              setNewTrip(prev => ({
-                                ...prev,
-                                participantIds: isSelected
-                                  ? (prev.participantIds ?? []).filter(id => id !== u.id)
-                                  : [...(prev.participantIds ?? []), u.id],
-                              }));
-                            }}
-                            className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
-                          />
-                          <span>{u.firstName} {u.lastName}</span>
-                        </label>
-                      );
-                    });
-                  })()}
-                </div>
-              </div>
-
-              {/* Mood Selection Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Best for Mood</Label>
-                  <Dialog open={moodSelectionDialogOpen} onOpenChange={setMoodSelectionDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                        style={{ backgroundColor: '#06B3C4' }}
-                      >
-                        + Add Mood
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Select Moods</DialogTitle>
-                        <DialogDescription>
-                          Choose the moods that best describe this trip.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="flex flex-wrap gap-2 py-4">
-                        {moods.filter(mood => mood.isActive).map((mood) => {
+                          + Add Mood
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Select Moods</DialogTitle>
+                          <DialogDescription>
+                            Choose the moods that best describe this trip.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 py-4">
+                          {moodOptions.filter(mood => mood.isActive).map((mood) => {
+                            const isSelected = selectedMoods.includes(mood.id);
+                            return (
+                              <button
+                                key={mood.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedMoods(prev =>
+                                    prev.includes(mood.id)
+                                      ? prev.filter(id => id !== mood.id)
+                                      : [...prev, mood.id]
+                                  );
+                                }}
+                                className={`
+                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
+                                  transform transition-transform duration-200
+                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
+                                `}
+                                style={isSelected
+                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
+                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                }
+                              >
+                                {mood.image ? (
+                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                    <img
+                                      src={mood.image}
+                                      alt={mood.name}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  </span>
+                                ) : mood.icon ? (
+                                  <span>{mood.icon}</span>
+                                ) : null}
+                                <span>{mood.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => setMoodSelectionDialogOpen(false)}
+                            className="text-white hover:opacity-90 border-0 font-medium"
+                            style={{ backgroundColor: '#06B3C4' }}
+                          >
+                            Done
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {moodOptions.filter(mood => mood.isActive).length === 0 ? (
+                      <p className="text-sm text-gray-500">No moods available yet.</p>
+                    ) : (
+                      moodOptions
+                        .filter(mood => mood.isActive)
+                        .map((mood) => {
                           const isSelected = selectedMoods.includes(mood.id);
                           return (
                             <button
@@ -956,15 +1384,12 @@ export function TripPage() {
                                     : [...prev, mood.id]
                                 );
                               }}
-                              className={`
-                                px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2
-                                transform transition-transform duration-200
-                                ${isSelected ? 'scale-105 shadow-md' : 'scale-100'}
-                                ${isSelected ? '' : 'border-transparent'}
-                              `}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                                isSelected ? 'text-white' : 'text-[#06B3C4]'
+                              }`}
                               style={isSelected
                                 ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
                               }
                             >
                               {mood.image ? (
@@ -981,88 +1406,92 @@ export function TripPage() {
                               <span>{mood.name}</span>
                             </button>
                           );
-                        })}
-                      </div>
-                      <DialogFooter>
+                        })
+                    )}
+                  </div>
+                </div>
+
+                {/* Style Selection Section */}
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Best for Style</Label>
+                    <Dialog open={styleSelectionDialogOpen} onOpenChange={setStyleSelectionDialogOpen}>
+                      <DialogTrigger asChild>
                         <Button
-                          onClick={() => setMoodSelectionDialogOpen(false)}
-                          className="text-white hover:opacity-90 border-0 font-medium"
+                          type="button"
+                          size="sm"
+                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
                           style={{ backgroundColor: '#06B3C4' }}
                         >
-                          Done
+                          + Add Style
                         </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedMoods.filter(moodId => {
-                    const mood = moods.find(m => m.id === moodId);
-                    return mood && mood.isActive;
-                  }).length === 0 ? (
-                    <p className="text-sm text-gray-500">No moods selected. Click "+ Add Mood" to select moods.</p>
-                  ) : (
-                    selectedMoods
-                      .filter(moodId => {
-                        const mood = moods.find(m => m.id === moodId);
-                        return mood && mood.isActive;
-                      })
-                      .map((moodId) => {
-                        const mood = moods.find(m => m.id === moodId);
-                        if (!mood) return null;
-                        return (
-                          <button
-                            key={mood.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedMoods(prev => prev.filter(id => id !== mood.id));
-                            }}
-                            className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2 transform transition-transform duration-200 scale-105 shadow-md"
-                            style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Select Styles</DialogTitle>
+                          <DialogDescription>
+                            Choose the styles that best describe this trip.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 py-4">
+                          {styleOptions.filter(isStyleActive).map((style) => {
+                            const isSelected = selectedStyles.includes(style.id);
+                            return (
+                              <button
+                                key={style.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedStyles(prev =>
+                                    prev.includes(style.id)
+                                      ? prev.filter(id => id !== style.id)
+                                      : [...prev, style.id]
+                                  );
+                                }}
+                                className={`
+                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
+                                  transform transition-transform duration-200
+                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
+                                `}
+                                style={isSelected
+                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
+                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                }
+                              >
+                                {style.image ? (
+                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                    <img
+                                      src={style.image}
+                                      alt={style.name}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  </span>
+                                ) : style.icon ? (
+                                  <span>{style.icon}</span>
+                                ) : null}
+                                <span>{style.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => setStyleSelectionDialogOpen(false)}
+                            className="text-white hover:opacity-90 border-0 font-medium"
+                            style={{ backgroundColor: '#06B3C4' }}
                           >
-                            {mood.image ? (
-                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                <img
-                                  src={mood.image}
-                                  alt={mood.name}
-                                  className="w-6 h-6 rounded-full object-cover"
-                                />
-                              </span>
-                            ) : mood.icon ? (
-                              <span>{mood.icon}</span>
-                            ) : null}
-                            <span>{mood.name}</span>
-                          </button>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-
-              {/* Style Selection Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Best for Style</Label>
-                  <Dialog open={styleSelectionDialogOpen} onOpenChange={setStyleSelectionDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                        style={{ backgroundColor: '#06B3C4' }}
-                      >
-                        + Add Style
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Select Styles</DialogTitle>
-                        <DialogDescription>
-                          Choose the styles that best describe this trip.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="flex flex-wrap gap-2 py-4">
-                        {styles.filter(isStyleActive).map((style) => {
+                            Done
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {styleOptions.filter(isStyleActive).length === 0 ? (
+                      <p className="text-sm text-gray-500">No styles available yet.</p>
+                    ) : (
+                      styleOptions
+                        .filter(isStyleActive)
+                        .map((style) => {
                           const isSelected = selectedStyles.includes(style.id);
                           return (
                             <button
@@ -1075,15 +1504,12 @@ export function TripPage() {
                                     : [...prev, style.id]
                                 );
                               }}
-                              className={`
-                                px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2
-                                transform transition-transform duration-200
-                                ${isSelected ? 'scale-105 shadow-md' : 'scale-100'}
-                                ${isSelected ? '' : 'border-transparent'}
-                              `}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                                isSelected ? 'text-white' : 'text-[#06B3C4]'
+                              }`}
                               style={isSelected
                                 ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
                               }
                             >
                               {style.image ? (
@@ -1100,228 +1526,12 @@ export function TripPage() {
                               <span>{style.name}</span>
                             </button>
                           );
-                        })}
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          onClick={() => setStyleSelectionDialogOpen(false)}
-                          className="text-white hover:opacity-90 border-0 font-medium"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          Done
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedStyles.filter(styleId => {
-                    const style = styles.find(s => s.id === styleId);
-                    return isStyleActive(style);
-                  }).length === 0 ? (
-                    <p className="text-sm text-gray-500">No styles selected. Click "+ Add Style" to select styles.</p>
-                  ) : (
-                    selectedStyles
-                      .filter(styleId => {
-                        const style = styles.find(s => s.id === styleId);
-                        return isStyleActive(style);
-                      })
-                      .map((styleId) => {
-                        const style = styles.find(s => s.id === styleId);
-                        if (!style) return null;
-                        return (
-                          <button
-                            key={style.id}
-                            type="button"
-                            onClick={() => {
-                              setSelectedStyles(prev => prev.filter(id => id !== style.id));
-                            }}
-                            className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2 transform transition-transform duration-200 scale-105 shadow-md"
-                            style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
-                          >
-                            {style.image ? (
-                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                <img
-                                  src={style.image}
-                                  alt={style.name}
-                                  className="w-6 h-6 rounded-full object-cover"
-                                />
-                              </span>
-                            ) : style.icon ? (
-                              <span>{style.icon}</span>
-                            ) : null}
-                            <span>{style.name}</span>
-                          </button>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-
-              {/* Itinerary Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Itinerary</Label>
-                </div>
-                {dayWiseItinerary.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    Select a start and end date to generate day-wise itinerary fields.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {dayWiseItinerary.map((day) => {
-                      const getDisplayDate = () => {
-                        if (!newTrip.startDate) return null;
-                        const start = new Date(newTrip.startDate);
-                        if (isNaN(start.getTime())) return null;
-                        const d = new Date(start);
-                        d.setDate(start.getDate() + (day.day - 1));
-                        return d.toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        });
-                      };
-
-                      const displayDate = getDisplayDate();
-
-                      return (
-                        <div key={day.id} className="space-y-2">
-                          <div className="flex items-baseline justify-between">
-                            <p className="font-semibold text-gray-900 font-heading">
-                              Day {day.day}
-                              {displayDate ? (
-                                <span className="ml-2 text-sm font-normal text-gray-500">
-                                  {displayDate}
-                                </span>
-                              ) : null}
-                            </p>
-                          </div>
-                          <Textarea
-                            value={day.description}
-                            onChange={(e) =>
-                              setDayWiseItinerary((prev) =>
-                                prev.map((d) =>
-                                  d.day === day.day ? { ...d, description: e.target.value } : d
-                                )
-                              )
-                            }
-                            placeholder={`Enter itinerary details for Day ${day.day}...`}
-                            rows={4}
-                            className="resize-y"
-                          />
-                        </div>
-                      );
-                    })}
-                    <p className="text-xs text-gray-500">
-                      Days are generated automatically based on the selected start and end dates.
-                      Updating the dates will update the days while keeping existing text where possible.
-                    </p>
+                        })
+                    )}
                   </div>
-                )}
-              </div>
-
-              {/* Places Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Places You'll Be Visiting</Label>
-                </div>
-                <div className="space-y-2">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Input
-                        placeholder="Place name"
-                        value={newPlace.name}
-                        onChange={(e) => setNewPlace(prev => ({ ...prev, name: e.target.value }))}
-                        className="text-sm"
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <input
-                        ref={placeImageInputRef}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => handlePlaceImageUpload(e.target.files?.[0] || null)}
-                      />
-                      <div className="flex items-center justify-end gap-3 max-w-full">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                          onClick={() => placeImageInputRef.current?.click()}
-                        >
-                          Choose Image
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          onClick={() => {
-                            if (newPlace.name && newPlace.image) {
-                              setPlaces([...places, { name: newPlace.name, image: newPlace.image }]);
-                              setNewPlace({ name: '', image: '', imageName: '' });
-                              if (placeImageInputRef.current) {
-                                placeImageInputRef.current.value = '';
-                              }
-                            }
-                          }}
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          <Plus className="h-4 w-4 mr-1" />
-                          Add Place
-                        </Button>
-                        {newPlace.image && (
-                          <div className="w-10 h-10 overflow-hidden rounded-md border border-gray-200 shadow-sm">
-                            <img
-                              src={newPlace.image}
-                              alt={newPlace.name || 'Place image preview'}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        )}
-                        {newPlace.imageName && (
-                          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-gray-50 text-xs text-gray-700 max-w-55 flex-1 min-w-0">
-                            <span className="truncate flex-1">
-                              {newPlace.imageName}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  {places.length > 0 && (
-                    <div className="space-y-2 mt-2">
-                      {places.map((place, index) => (
-                        <div key={index} className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200">
-                          {place.image && (
-                            <div className="relative">
-                              <img
-                                src={place.image}
-                                alt={place.name}
-                                className="w-16 h-16 object-cover rounded"
-                              />
-                            </div>
-                          )}
-                          <span className="flex-1 font-medium text-gray-900">{place.name}</span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setPlaces(places.filter((_, i) => i !== index))}
-                            className="h-8 w-8 p-0 text-white hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                 </div>
               </div>
-            </div>
+            )}
             <DialogFooter className="gap-3">
               <Button
                 type="button"
@@ -1331,14 +1541,35 @@ export function TripPage() {
               >
                 Cancel
               </Button>
-              <Button
-                type="button"
-                onClick={handleCreateTrip}
-                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Create Trip
-              </Button>
+              {createTripStep > 1 && (
+                <Button
+                  type="button"
+                  onClick={() => setCreateTripStep((step) => Math.max(1, step - 1))}
+                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Back
+                </Button>
+              )}
+              {createTripStep < 3 ? (
+                <Button
+                  type="button"
+                  onClick={() => setCreateTripStep((step) => Math.min(3, step + 1))}
+                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Continue
+                </Button>
+              ) : (
+                <Button
+                  type="button"
+                  onClick={handleCreateTrip}
+                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Create Trip
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1355,7 +1586,15 @@ export function TripPage() {
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
-        <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
+        <Dialog
+          open={tripDialogOpen}
+          onOpenChange={(open) => {
+            setTripDialogOpen(open);
+            if (open) {
+              setCreateTripStep(1);
+            }
+          }}
+        >
           <DialogTrigger asChild>
             <Button className="text-white hover:opacity-90 border-0 font-medium px-5 py-2 rounded-full shadow-md" style={{ backgroundColor: '#06B3C4' }}>
               <Plus className="h-4 w-4 mr-2" />
@@ -1379,6 +1618,11 @@ export function TripPage() {
             );
           });
 
+          const totalPages = Math.ceil(filteredTrips.length / ITEMS_PER_PAGE) || 1;
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedTrips = filteredTrips.slice(startIndex, endIndex);
+
           return filteredTrips.length === 0 ? (
             <div className="text-center py-12">
               <MapPin className="h-12 w-12 mx-auto mb-4 text-gray-300" />
@@ -1399,7 +1643,7 @@ export function TripPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTrips.map((trip) => (
+                  {paginatedTrips.map((trip) => (
                   <tr key={trip.id} className="border-b hover:bg-gray-50 transition-colors" style={{ borderColor: '#EEF0F1' }}>
                     <td className="py-3 px-4">
                       <div className="font-medium text-gray-900">
@@ -1449,16 +1693,7 @@ export function TripPage() {
                         </Button>
                         <Button
                           size="sm"
-                          onClick={() => {
-                            if (confirm(`Are you sure you want to delete "${trip.title}"?`)) {
-                              deleteTrip(trip.id);
-                              showToast('Trip deleted successfully!');
-                              if (editingTrip?.id === trip.id) {
-                                setEditingTrip(null);
-                                setEditTripDialogOpen(false);
-                              }
-                            }
-                          }}
+                          onClick={() => handleRequestDeleteTrip(trip)}
                           className="h-7 w-7 p-0 hover:opacity-90 border-0"
                           style={{ backgroundColor: '#06B3C4' }}
                         >
@@ -1470,6 +1705,63 @@ export function TripPage() {
                   ))}
                 </tbody>
               </table>
+              {totalPages > 1 && (
+                <div
+                  className="px-4 py-3 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+                  style={{ borderColor: '#EEF0F1' }}
+                >
+                  <div className="text-sm text-gray-600">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filteredTrips.length)} of {filteredTrips.length} trips
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        const showPage = page === 1 || page === totalPages || (page >= currentPage - 1 && page <= currentPage + 1);
+                        const showEllipsis = (page === currentPage - 2 && currentPage > 3) || (page === currentPage + 2 && currentPage < totalPages - 2);
+                        if (showEllipsis) {
+                          return <span key={page} className="px-2 text-gray-500">...</span>;
+                        }
+                        if (!showPage) return null;
+                        return (
+                          <Button
+                            key={page}
+                            variant="ghost"
+                            onClick={() => setCurrentPage(page)}
+                            className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
+                              currentPage === page
+                                ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                                : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                            }`}
+                            style={
+                              currentPage === page
+                                ? { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                            }
+                          >
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+                    <Button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })()}
@@ -1695,6 +1987,11 @@ export function TripPage() {
             if (!open) {
               if (editCoverInputRef.current) editCoverInputRef.current.value = '';
               setEditParticipantSearchQuery('');
+              setEditCoverFile(null);
+              setEditTripStep(1);
+            }
+            if (open) {
+              setEditTripStep(1);
             }
             setEditTripDialogOpen(open);
           }}
@@ -1703,31 +2000,171 @@ export function TripPage() {
             <DialogHeader>
               <DialogTitle className="font-heading">Edit Trip</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="edit-trip-title">Trip Title</Label>
-                <Input
-                  id="edit-trip-title"
-                  value={editingTrip.title}
-                  onChange={(e) => setEditingTrip({ ...editingTrip, title: e.target.value })}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-trip-status">Status</Label>
-                <select
-                  id="edit-trip-status"
-                  value={editingTrip.status || 'Active'}
-                  onChange={(e) => setEditingTrip({ ...editingTrip, status: e.target.value as 'Active' | 'Inactive' })}
-                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
+            <div className="flex items-center justify-between text-xs text-gray-500">
+              <span>Step {editTripStep} of 3</span>
+            </div>
 
-              {/* Cover Image */}
-              <div className="space-y-2">
-                <Label htmlFor="edit-trip-cover-image">Cover Image</Label>
+            {editTripStep === 1 && (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-trip-title">Trip Title</Label>
+                  <Input
+                    id="edit-trip-title"
+                    value={editingTrip.title}
+                    onChange={(e) => setEditingTrip({ ...editingTrip, title: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-trip-destination">Destination</Label>
+                  <Input
+                    id="edit-trip-destination"
+                    value={editingTrip.destination}
+                    onChange={(e) => setEditingTrip({ ...editingTrip, destination: e.target.value })}
+                    placeholder="Destination"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-trip-description">Description</Label>
+                  <Textarea
+                    id="edit-trip-description"
+                    value={editingTrip.description}
+                    onChange={(e) => setEditingTrip({ ...editingTrip, description: e.target.value })}
+                    placeholder="Describe the trip..."
+                  />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-trip-start">Start Date</Label>
+                    <Input
+                      id="edit-trip-start"
+                      type="date"
+                      value={editingTrip.startDate}
+                      onChange={(e) => setEditingTrip({ ...editingTrip, startDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-trip-end">End Date</Label>
+                    <Input
+                      id="edit-trip-end"
+                      type="date"
+                      value={editingTrip.endDate}
+                      onChange={(e) => setEditingTrip({ ...editingTrip, endDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-trip-type">Type</Label>
+                    <select
+                      id="edit-trip-type"
+                      value={editingTrip.type ?? 'public'}
+                      onChange={(e) => setEditingTrip({ ...editingTrip, type: e.target.value })}
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    >
+                      <option value="public">Public</option>
+                      <option value="private">Private</option>
+                      <option value="invite-only">Invite Only</option>
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm">Featured</Label>
+                    <div className="flex items-center gap-3">
+                      <input
+                        id="edit-trip-featured"
+                        type="checkbox"
+                        checked={Boolean(editingTrip.isFeatured)}
+                        onChange={(e) => setEditingTrip({ ...editingTrip, isFeatured: e.target.checked })}
+                        className="h-4 w-4 rounded border border-gray-300 bg-white checked:bg-white checked:border-gray-300 accent-[#06B3C4]"
+                      />
+                      <Label htmlFor="edit-trip-featured" className="text-sm text-gray-600">Mark as featured</Label>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-overview-type">Overview Type</Label>
+                    <Input
+                      id="edit-overview-type"
+                      value={editingTrip.overviewType ?? ''}
+                      onChange={(e) => setEditingTrip({ ...editingTrip, overviewType: e.target.value })}
+                      placeholder="e.g., adventure"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="edit-overview-notes">Overview Notes</Label>
+                    <Input
+                      id="edit-overview-notes"
+                      value={editingTrip.overviewNotes ?? ''}
+                      onChange={(e) => setEditingTrip({ ...editingTrip, overviewNotes: e.target.value })}
+                      placeholder="Visa info, tips, etc."
+                    />
+                  </div>
+                </div>
+
+                {/* Participants */}
+                <div className="space-y-2 pt-4 border-t">
+                  <Label className="text-base font-semibold">Participants</Label>
+                  <p className="text-xs text-gray-500">Select users to add to this trip.</p>
+                  <Input
+                    type="text"
+                    placeholder="Search for Participants"
+                    value={editParticipantSearchQuery}
+                    onChange={(e) => setEditParticipantSearchQuery(e.target.value)}
+                    className="rounded-md border border-input"
+                  />
+                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
+                    {(() => {
+                      const users = apiTripUsers.length > 0 ? apiTripUsers : storage.getTripUsers();
+                      if (users.length === 0) {
+                        return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
+                      }
+                      const q = editParticipantSearchQuery.trim().toLowerCase();
+                      const filtered = q
+                        ? users.filter((u) => {
+                            const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
+                            return full.includes(q);
+                          })
+                        : users;
+                      if (filtered.length === 0) {
+                        return <p className="text-sm text-gray-500">No participants match your search.</p>;
+                      }
+                      return filtered.map((u) => {
+                        const participantIds = editingTrip.participantIds ?? [];
+                        const isSelected = participantIds.includes(u.id);
+                        return (
+                          <label
+                            key={u.id}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
+                              isSelected
+                                ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
+                                : 'border-input bg-background hover:bg-gray-50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {
+                                setEditingTrip(prev => prev ? {
+                                  ...prev,
+                                  participantIds: isSelected
+                                    ? (prev.participantIds ?? []).filter(id => id !== u.id)
+                                    : [...(prev.participantIds ?? []), u.id],
+                                } : null);
+                              }}
+                              className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
+                            />
+                            <span>{u.firstName} {u.lastName}</span>
+                          </label>
+                        );
+                      });
+                    })()}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {editTripStep === 2 && (
+              <div className="py-8">
                 <input
                   id="edit-trip-cover-image"
                   ref={editCoverInputRef}
@@ -1739,125 +2176,195 @@ export function TripPage() {
                     e.target.value = '';
                   }}
                 />
-                <div className="flex items-center justify-end gap-3 w-full">
-                  {editingTrip.coverImage ? (
-                    <div className="w-20 h-20 rounded overflow-hidden border border-gray-200 bg-gray-50 shrink-0 mr-auto">
-                      <img
-                        src={editingTrip.coverImage}
-                        alt="Cover preview"
-                        className="w-full h-full object-cover"
-                      />
+                <div className="flex items-center justify-center">
+                  <div className="w-full max-w-md rounded-3xl border border-[#D7E4F3] bg-white p-6 shadow-sm">
+                    <div className="aspect-square w-full overflow-hidden rounded-2xl border border-[#D7E4F3] bg-[#A9C6F4] flex items-center justify-center">
+                      {editingTrip.coverImage ? (
+                        <img
+                          src={editingTrip.coverImage}
+                          alt="Trip cover"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-white text-7xl font-semibold">
+                          {(editingTrip.title?.trim()?.charAt(0) || 'A').toUpperCase()}
+                        </span>
+                      )}
                     </div>
-                  ) : null}
-                  <div className="flex gap-2 shrink-0">
-                  <Button
-                    type="button"
-                    size="sm"
-                    className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                    style={{ backgroundColor: '#06B3C4' }}
-                    onClick={() => editCoverInputRef.current?.click()}
-                  >
-                    {editingTrip.coverImage ? 'Change image' : 'Add image'}
-                  </Button>
-                  {editingTrip.coverImage ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="text-sm text-white hover:opacity-90 border-0 font-medium"
-                      style={{ backgroundColor: '#06B3C4' }}
-                      onClick={() => setEditingTrip({ ...editingTrip, coverImage: '' })}
-                    >
-                      Remove
-                    </Button>
-                  ) : null}
+                    <div className="mt-5 flex items-center justify-center gap-3">
+                      <Button
+                        type="button"
+                        className="text-white border-0 hover:opacity-90 rounded-full px-5"
+                        style={{ backgroundColor: '#06B3C4' }}
+                        onClick={() => editCoverInputRef.current?.click()}
+                      >
+                        {editingTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
+                      </Button>
+                      {editingTrip.coverImage ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingTrip({ ...editingTrip, coverImage: '' });
+                            setEditCoverFile(null);
+                            if (editCoverInputRef.current) editCoverInputRef.current.value = '';
+                          }}
+                          className="h-10 w-10 rounded-full text-white flex items-center justify-center hover:opacity-90"
+                          style={{ backgroundColor: '#06B3C4' }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
+            )}
 
-              {/* Participants */}
-              <div className="space-y-2 pt-4 border-t">
-                <Label className="text-base font-semibold">Participants</Label>
-                <p className="text-xs text-gray-500">Select users to add to this trip.</p>
-                <Input
-                  type="text"
-                  placeholder="Search for Participants"
-                  value={editParticipantSearchQuery}
-                  onChange={(e) => setEditParticipantSearchQuery(e.target.value)}
-                  className="rounded-md border border-input"
-                />
-                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
-                  {(() => {
-                    const users = storage.getTripUsers();
-                    if (users.length === 0) {
-                      return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
-                    }
-                    const q = editParticipantSearchQuery.trim().toLowerCase();
-                    const filtered = q
-                      ? users.filter((u) => {
-                          const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
-                          return full.includes(q);
-                        })
-                      : users;
-                    if (filtered.length === 0) {
-                      return <p className="text-sm text-gray-500">No participants match your search.</p>;
-                    }
-                    return filtered.map((u) => {
-                      const participantIds = editingTrip.participantIds ?? [];
-                      const isSelected = participantIds.includes(u.id);
-                      return (
-                        <label
-                          key={u.id}
-                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
-                            isSelected
-                              ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
-                              : 'border-input bg-background hover:bg-gray-50'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => {
-                              setEditingTrip(prev => prev ? {
-                                ...prev,
-                                participantIds: isSelected
-                                  ? (prev.participantIds ?? []).filter(id => id !== u.id)
-                                  : [...(prev.participantIds ?? []), u.id],
-                              } : null);
-                            }}
-                            className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
-                          />
-                          <span>{u.firstName} {u.lastName}</span>
-                        </label>
-                      );
-                    });
-                  })()}
+            {editTripStep === 3 && (
+              <div className="space-y-4 py-4">
+                {/* Edit Itinerary Section */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Itinerary</Label>
+                  </div>
+                  {editingDayWiseItinerary.length === 0 ? (
+                    <p className="text-sm text-gray-500">
+                      This trip has no date range or itinerary days configured yet.
+                    </p>
+                  ) : (
+                    <div className="space-y-4">
+                      {editingDayWiseItinerary.map((day) => {
+                        const getDisplayDate = () => {
+                          if (!editingTrip.startDate) return null;
+                          const start = new Date(editingTrip.startDate);
+                          if (isNaN(start.getTime())) return null;
+                          const d = new Date(start);
+                          d.setDate(start.getDate() + (day.day - 1));
+                          return d.toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
+                          });
+                        };
+
+                        const displayDate = getDisplayDate();
+
+                        return (
+                          <div key={day.id} className="space-y-2">
+                            <div className="flex items-baseline justify-between">
+                              <p className="font-semibold text-gray-900 font-heading">
+                                Day {day.day}
+                                {displayDate ? (
+                                  <span className="ml-2 text-sm font-normal text-gray-500">
+                                    {displayDate}
+                                  </span>
+                                ) : null}
+                              </p>
+                            </div>
+                            <Textarea
+                              value={day.description}
+                              onChange={(e) =>
+                                setEditingDayWiseItinerary((prev) =>
+                                  prev.map((d) =>
+                                    d.day === day.day ? { ...d, description: e.target.value } : d
+                                  )
+                                )
+                              }
+                              placeholder={`Enter itinerary details for Day ${day.day}...`}
+                              rows={4}
+                              className="resize-y"
+                            />
+                          </div>
+                        );
+                      })}
+                      <p className="text-xs text-gray-500">
+                        Days are based on the trip start and end dates. Updating the dates will
+                        update the number of days while keeping existing text where possible.
+                      </p>
+                    </div>
+                  )}
                 </div>
-              </div>
-
-              {/* Best for Mood */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Best for Mood</Label>
-                  <Dialog open={editMoodSelectionDialogOpen} onOpenChange={setEditMoodSelectionDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                        style={{ backgroundColor: '#06B3C4' }}
-                      >
-                        + Add Mood
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Select Moods</DialogTitle>
-                        <DialogDescription>
-                          Choose the moods that best describe this trip.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="flex flex-wrap gap-2 py-4">
-                        {moods.filter(mood => mood.isActive).map((mood) => {
+                {/* Best for Mood */}
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Best for Mood</Label>
+                    <Dialog open={editMoodSelectionDialogOpen} onOpenChange={setEditMoodSelectionDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
+                          style={{ backgroundColor: '#06B3C4' }}
+                        >
+                          + Add Mood
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Select Moods</DialogTitle>
+                          <DialogDescription>
+                            Choose the moods that best describe this trip.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 py-4">
+                          {moodOptions.filter(mood => mood.isActive).map((mood) => {
+                            const isSelected = editingSelectedMoods.includes(mood.id);
+                            return (
+                              <button
+                                key={mood.id}
+                                type="button"
+                                onClick={() => {
+                                  setEditingSelectedMoods(prev =>
+                                    prev.includes(mood.id)
+                                      ? prev.filter(id => id !== mood.id)
+                                      : [...prev, mood.id]
+                                  );
+                                }}
+                                className={`
+                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
+                                  transform transition-transform duration-200
+                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
+                                `}
+                                style={isSelected
+                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
+                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                }
+                              >
+                                {mood.image ? (
+                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                    <img
+                                      src={mood.image}
+                                      alt={mood.name}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  </span>
+                                ) : mood.icon ? (
+                                  <span>{mood.icon}</span>
+                                ) : null}
+                                <span>{mood.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => setEditMoodSelectionDialogOpen(false)}
+                            className="text-white hover:opacity-90 border-0 font-medium"
+                            style={{ backgroundColor: '#06B3C4' }}
+                          >
+                            Done
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {moodOptions.filter(mood => mood.isActive).length === 0 ? (
+                      <p className="text-sm text-gray-500">No moods available yet.</p>
+                    ) : (
+                      moodOptions
+                        .filter(mood => mood.isActive)
+                        .map((mood) => {
                           const isSelected = editingSelectedMoods.includes(mood.id);
                           return (
                             <button
@@ -1870,15 +2377,12 @@ export function TripPage() {
                                     : [...prev, mood.id]
                                 );
                               }}
-                              className={`
-                                px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2
-                                transform transition-transform duration-200
-                                ${isSelected ? 'scale-105 shadow-md' : 'scale-100'}
-                                ${isSelected ? '' : 'border-transparent'}
-                              `}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                                isSelected ? 'text-white' : 'text-[#06B3C4]'
+                              }`}
                               style={isSelected
                                 ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
                               }
                             >
                               {mood.image ? (
@@ -1895,88 +2399,92 @@ export function TripPage() {
                               <span>{mood.name}</span>
                             </button>
                           );
-                        })}
-                      </div>
-                      <DialogFooter>
+                        })
+                    )}
+                  </div>
+                </div>
+
+                {/* Style Selection Section */}
+                <div className="space-y-4 pt-4 border-t">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Best for Style</Label>
+                    <Dialog open={editStyleSelectionDialogOpen} onOpenChange={setEditStyleSelectionDialogOpen}>
+                      <DialogTrigger asChild>
                         <Button
-                          onClick={() => setEditMoodSelectionDialogOpen(false)}
-                          className="text-white hover:opacity-90 border-0 font-medium"
+                          type="button"
+                          size="sm"
+                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
                           style={{ backgroundColor: '#06B3C4' }}
                         >
-                          Done
+                          + Add Style
                         </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {editingSelectedMoods.filter(moodId => {
-                    const mood = moods.find(m => m.id === moodId);
-                    return mood && mood.isActive;
-                  }).length === 0 ? (
-                    <p className="text-sm text-gray-500">No moods selected. Click "+ Add Mood" to select moods.</p>
-                  ) : (
-                    editingSelectedMoods
-                      .filter(moodId => {
-                        const mood = moods.find(m => m.id === moodId);
-                        return mood && mood.isActive;
-                      })
-                      .map((moodId) => {
-                        const mood = moods.find(m => m.id === moodId);
-                        if (!mood) return null;
-                        return (
-                          <button
-                            key={mood.id}
-                            type="button"
-                            onClick={() => {
-                              setEditingSelectedMoods(prev => prev.filter(id => id !== mood.id));
-                            }}
-                            className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2 transform transition-transform duration-200 scale-105 shadow-md"
-                            style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
+                      </DialogTrigger>
+                      <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                          <DialogTitle>Select Styles</DialogTitle>
+                          <DialogDescription>
+                            Choose the styles that best describe this trip.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="flex flex-wrap gap-2 py-4">
+                          {styleOptions.filter(isStyleActive).map((style) => {
+                            const isSelected = editingSelectedStyles.includes(style.id);
+                            return (
+                              <button
+                                key={style.id}
+                                type="button"
+                                onClick={() => {
+                                  setEditingSelectedStyles(prev =>
+                                    prev.includes(style.id)
+                                      ? prev.filter(id => id !== style.id)
+                                      : [...prev, style.id]
+                                  );
+                                }}
+                                className={`
+                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
+                                  transform transition-transform duration-200
+                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
+                                `}
+                                style={isSelected
+                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
+                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                }
+                              >
+                                {style.image ? (
+                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                    <img
+                                      src={style.image}
+                                      alt={style.name}
+                                      className="w-6 h-6 rounded-full object-cover"
+                                    />
+                                  </span>
+                                ) : style.icon ? (
+                                  <span>{style.icon}</span>
+                                ) : null}
+                                <span>{style.name}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            onClick={() => setEditStyleSelectionDialogOpen(false)}
+                            className="text-white hover:opacity-90 border-0 font-medium"
+                            style={{ backgroundColor: '#06B3C4' }}
                           >
-                            {mood.image ? (
-                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                <img
-                                  src={mood.image}
-                                  alt={mood.name}
-                                  className="w-6 h-6 rounded-full object-cover"
-                                />
-                              </span>
-                            ) : mood.icon ? (
-                              <span>{mood.icon}</span>
-                            ) : null}
-                            <span>{mood.name}</span>
-                          </button>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-
-              {/* Style Selection Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Best for Style</Label>
-                  <Dialog open={editStyleSelectionDialogOpen} onOpenChange={setEditStyleSelectionDialogOpen}>
-                    <DialogTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                        style={{ backgroundColor: '#06B3C4' }}
-                      >
-                        + Add Style
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Select Styles</DialogTitle>
-                        <DialogDescription>
-                          Choose the styles that best describe this trip.
-                        </DialogDescription>
-                      </DialogHeader>
-                      <div className="flex flex-wrap gap-2 py-4">
-                        {styles.filter(isStyleActive).map((style) => {
+                            Done
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {styleOptions.filter(isStyleActive).length === 0 ? (
+                      <p className="text-sm text-gray-500">No styles available yet.</p>
+                    ) : (
+                      styleOptions
+                        .filter(isStyleActive)
+                        .map((style) => {
                           const isSelected = editingSelectedStyles.includes(style.id);
                           return (
                             <button
@@ -1989,15 +2497,12 @@ export function TripPage() {
                                     : [...prev, style.id]
                                 );
                               }}
-                              className={`
-                                px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2
-                                transform transition-transform duration-200
-                                ${isSelected ? 'scale-105 shadow-md' : 'scale-100'}
-                                ${isSelected ? '' : 'border-transparent'}
-                              `}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                                isSelected ? 'text-white' : 'text-[#06B3C4]'
+                              }`}
                               style={isSelected
                                 ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
                               }
                             >
                               {style.image ? (
@@ -2014,128 +2519,13 @@ export function TripPage() {
                               <span>{style.name}</span>
                             </button>
                           );
-                        })}
-                      </div>
-                      <DialogFooter>
-                        <Button
-                          onClick={() => setEditStyleSelectionDialogOpen(false)}
-                          className="text-white hover:opacity-90 border-0 font-medium"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          Done
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {editingSelectedStyles.filter(styleId => {
-                    const style = styles.find(s => s.id === styleId);
-                    return isStyleActive(style);
-                  }).length === 0 ? (
-                    <p className="text-sm text-gray-500">No styles selected. Click "+ Add Style" to select styles.</p>
-                  ) : (
-                    editingSelectedStyles
-                      .filter(styleId => {
-                        const style = styles.find(s => s.id === styleId);
-                        return isStyleActive(style);
-                      })
-                      .map((styleId) => {
-                        const style = styles.find(s => s.id === styleId);
-                        if (!style) return null;
-                        return (
-                          <button
-                            key={style.id}
-                            type="button"
-                            onClick={() => {
-                              setEditingSelectedStyles(prev => prev.filter(id => id !== style.id));
-                            }}
-                            className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 hover:opacity-90 flex items-center gap-2 transform transition-transform duration-200 scale-105 shadow-md"
-                            style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
-                          >
-                            {style.image ? (
-                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                <img
-                                  src={style.image}
-                                  alt={style.name}
-                                  className="w-6 h-6 rounded-full object-cover"
-                                />
-                              </span>
-                            ) : style.icon ? (
-                              <span>{style.icon}</span>
-                            ) : null}
-                            <span>{style.name}</span>
-                          </button>
-                        );
-                      })
-                  )}
-                </div>
-              </div>
-
-              {/* Edit Itinerary Section */}
-              <div className="space-y-4 pt-4 border-t">
-                <div className="flex items-center justify-between">
-                  <Label className="text-base font-semibold">Itinerary</Label>
-                </div>
-                {editingDayWiseItinerary.length === 0 ? (
-                  <p className="text-sm text-gray-500">
-                    This trip has no date range or itinerary days configured yet.
-                  </p>
-                ) : (
-                  <div className="space-y-4">
-                    {editingDayWiseItinerary.map((day) => {
-                      const getDisplayDate = () => {
-                        if (!editingTrip.startDate) return null;
-                        const start = new Date(editingTrip.startDate);
-                        if (isNaN(start.getTime())) return null;
-                        const d = new Date(start);
-                        d.setDate(start.getDate() + (day.day - 1));
-                        return d.toLocaleDateString('en-GB', {
-                          day: '2-digit',
-                          month: 'short',
-                          year: 'numeric',
-                        });
-                      };
-
-                      const displayDate = getDisplayDate();
-
-                      return (
-                        <div key={day.id} className="space-y-2">
-                          <div className="flex items-baseline justify-between">
-                            <p className="font-semibold text-gray-900 font-heading">
-                              Day {day.day}
-                              {displayDate ? (
-                                <span className="ml-2 text-sm font-normal text-gray-500">
-                                  {displayDate}
-                                </span>
-                              ) : null}
-                            </p>
-                          </div>
-                          <Textarea
-                            value={day.description}
-                            onChange={(e) =>
-                              setEditingDayWiseItinerary((prev) =>
-                                prev.map((d) =>
-                                  d.day === day.day ? { ...d, description: e.target.value } : d
-                                )
-                              )
-                            }
-                            placeholder={`Enter itinerary details for Day ${day.day}...`}
-                            rows={4}
-                            className="resize-y"
-                          />
-                        </div>
-                      );
-                    })}
-                    <p className="text-xs text-gray-500">
-                      Days are based on the trip start and end dates. Updating the dates will
-                      update the number of days while keeping existing text where possible.
-                    </p>
+                        })
+                    )}
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-            <DialogFooter>
+            )}
+            <DialogFooter className="gap-3">
               <Button
                 onClick={() => {
                   setEditTripDialogOpen(false);
@@ -2146,17 +2536,84 @@ export function TripPage() {
               >
                 Cancel
               </Button>
-              <Button
-                onClick={handleUpdateTrip}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Update Trip
-              </Button>
+              {editTripStep > 1 && (
+                <Button
+                  type="button"
+                  onClick={() => setEditTripStep((step) => Math.max(1, step - 1))}
+                  className="text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Back
+                </Button>
+              )}
+              {editTripStep < 3 ? (
+                <Button
+                  type="button"
+                  onClick={() => setEditTripStep((step) => Math.min(3, step + 1))}
+                  className="text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Continue
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleUpdateTrip}
+                  className="text-white hover:opacity-90 border-0 font-medium"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  Update Trip
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
       )}
+
+      <Dialog
+        open={deleteTripDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && !deleteTripLoading) {
+            setDeleteTripDialogOpen(false);
+            setDeleteTripTarget(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-heading">Delete Trip</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete <span className="font-semibold text-[#06B3C4]">{deleteTripTarget?.title || 'this trip'}</span>?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex justify-end gap-2">
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              onClick={() => {
+                if (!deleteTripLoading) {
+                  setDeleteTripDialogOpen(false);
+                  setDeleteTripTarget(null);
+                }
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              className="h-9 px-4 text-sm text-white font-medium"
+              style={{ backgroundColor: '#06B3C4' }}
+              disabled={!deleteTripTarget || deleteTripLoading}
+              onClick={() => {
+                if (!deleteTripTarget) return;
+                handleDeleteTrip(deleteTripTarget);
+              }}
+            >
+              {deleteTripLoading ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
