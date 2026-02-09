@@ -159,18 +159,39 @@ h1 {
 
 button {
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: none;
   padding: 0.45em 0.9em;
   font-size: 0.9rem;
   font-weight: 500;
   font-family: inherit;
-  background-color: #1a1a1a;
+  background-color: transparent;
   cursor: pointer;
   transition: border-color 0.25s;
+  appearance: none;
 }
 button:focus,
 button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
+  outline: none;
+  box-shadow: none;
+}
+button:active {
+  background-color: transparent;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(49%) sepia(84%) saturate(396%) hue-rotate(145deg) brightness(92%) contrast(92%);
+  width: 1.4rem;
+  height: 1.4rem;
+  margin-left: auto;
+  margin-right: 0.5rem;
+  cursor: pointer;
+  position: absolute;
+  right: 0.75rem;
+}
+
+input[type="date"] {
+  padding-right: 3rem;
+  position: relative;
 }
 
 @media (prefers-color-scheme: light) {
@@ -182,7 +203,7 @@ button:focus-visible {
     color: #747bff;
   }
   button {
-    background-color: #f9f9f9;
+    background-color: transparent;
   }
 }
 

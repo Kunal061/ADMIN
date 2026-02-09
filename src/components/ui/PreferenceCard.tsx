@@ -25,7 +25,6 @@ interface PreferenceCardProps {
 }
 
 export function PreferenceCard({
-  id,
   name,
   description,
   icon,
@@ -33,9 +32,6 @@ export function PreferenceCard({
   isActive,
   onClick,
   iconColor,
-  labelPosition = 'center',
-  showIcon = true,
-  overlayOpacity = 0.25,
   blurImage = false,
   imageBlur = 4,
   variant = 'preference',
@@ -45,9 +41,6 @@ export function PreferenceCard({
   duration,
   showNavigationArrow,
 }: PreferenceCardProps) {
-  // Auto-detect label position based on image presence
-  const finalLabelPosition = image ? (labelPosition === 'bottom-left' ? 'bottom-left' : 'center') : 'center';
-  const finalShowIcon = image ? (showIcon === false ? false : true) : (showIcon !== false);
   
   // Trip card variant
   if (variant === 'trip') {

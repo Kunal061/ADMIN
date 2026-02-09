@@ -15,6 +15,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { apiClient, getApiBaseUrl } from '@/lib/apiClient';
 
 export function UsersPage() {
   const { showToast } = useApp();
@@ -99,36 +100,21 @@ export function UsersPage() {
     return dateString;
   };
 
-  // API configuration from environment variables (required)
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
-  const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN;
-  
-  if (!API_BASE_URL || !API_TOKEN) {
+  const API_BASE_URL = getApiBaseUrl();
+  if (!API_BASE_URL) {
     console.error('❌ API configuration missing! Please check .env.local file.');
   }
-  
-  const API_BASE = `${API_BASE_URL}/admin/users`;
-  const MOODS_BASE = `${API_BASE_URL}/moods`;
-  const STYLES_BASE = `${API_BASE_URL}/styles`;
-
-  // Helper to create authenticated headers
-  const getAuthHeaders = () => ({
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_TOKEN}`,
-  });
 
   // Fetch users from external API
   const fetchUsersFromAPI = async () => {
     setLoading(true);
     setApiError(null);
     try {
-      const response = await fetch(API_BASE, {
-        headers: getAuthHeaders(),
-      });
-      if (!response.ok) {
+      const response = await apiClient.get('/admin/users');
+      if (response.status < 200 || response.status >= 300) {
         throw new Error('Failed to fetch users from API');
       }
-      const data = await response.json();
+      const data = response.data;
       const list = Array.isArray(data)
         ? data
         : (data?.data?.data || data?.data || data?.users || []);
@@ -140,6 +126,12 @@ export function UsersPage() {
         const lastName = user.lastName || (user.name ? user.name.split(' ').slice(1).join(' ') : '');
         const dob = user.dob || user.dateOfBirth;
         const dateOfBirth = typeof dob === 'string' ? dob.split('T')[0] : dob ? new Date(dob).toISOString().slice(0, 10) : undefined;
+        const emergency = user.emergency ?? {
+          contactName: user.emergencyContactName || user.emergencyName,
+          relationship: user.emergencyRelationship,
+          contactNo: user.emergencyContactNo || user.emergencyContactNumber,
+          email: user.emergencyEmail,
+        };
         return {
           id: (user._id ?? user.id).toString(),
           firstName,
@@ -150,6 +142,9 @@ export function UsersPage() {
           gender: user.gender || undefined,
           mood: normalizeIdList(user.mood),
           style: normalizeIdList(user.style),
+          emergency: emergency && (emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email)
+            ? emergency
+            : undefined,
         };
       });
       
@@ -188,11 +183,9 @@ export function UsersPage() {
     setMoodsLoading(true);
     setMoodsError(null);
     try {
-      const response = await fetch(`${MOODS_BASE}/get-all-moods`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) {
+      const response = await apiClient.get('/moods/get-all-moods');
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to fetch moods');
       }
       const list = data?.data?.data || data?.data || data || [];
@@ -211,11 +204,9 @@ export function UsersPage() {
     setStylesLoading(true);
     setStylesError(null);
     try {
-      const response = await fetch(`${STYLES_BASE}/get-all-styles`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) {
+      const response = await apiClient.get('/styles/get-all-styles');
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to fetch styles');
       }
       const list = data?.data?.data || data?.data || data || [];
@@ -282,47 +273,62 @@ export function UsersPage() {
       ? `${newDobYear}-${newDobMonth.padStart(2, '0')}-${newDobDay.padStart(2, '0')}`
       : undefined;
 
-    const normalizedGender = newGender.trim().toLowerCase();
-    const payload = {
+    const normalizeGenderValue = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      const lowered = trimmed.toLowerCase();
+      if (lowered.includes('prefer')) return 'other';
+      if (lowered === 'male' || lowered === 'female' || lowered === 'other') return lowered;
+      return lowered;
+    };
+    const normalizedGender = normalizeGenderValue(newGender);
+  const trimmedPhone = newPhone.trim();
+    const payload: Record<string, unknown> = {
       firstName: trimmedFirstName,
       lastName: trimmedLastName,
       emailAddress: email,
-      mobileNo: newPhone.trim() || undefined,
+      mobileNo: trimmedPhone || undefined,
       dob: dateOfBirth || undefined,
-      gender: normalizedGender,
+  gender: normalizedGender,
       password: newPassword.trim(),
-      mood: mood.length ? mood : undefined,
-      style: style.length ? style : undefined,
-      emergency: {
-        contactName: newEmergencyName.trim() || undefined,
-        relationship: newEmergencyRelationship.trim() || undefined,
-        contactNo: newEmergencyContactNo.trim() || undefined,
-        email: newEmergencyEmail.trim() || undefined,
-      },
     };
+    if (mood.length) payload.mood = mood;
+    if (style.length) payload.style = style;
+    const emergency = {
+      contactName: newEmergencyName.trim() || undefined,
+      relationship: newEmergencyRelationship.trim() || undefined,
+      contactNo: newEmergencyContactNo.trim() || undefined,
+      email: newEmergencyEmail.trim() || undefined,
+    };
+    if (emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email) {
+      payload.emergency = emergency;
+    }
 
     try {
-      const response = await fetch(API_BASE, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-      const responseData = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.post('/admin/users', payload);
+      const responseData = response.data;
+      if (response.status < 200 || response.status >= 300) {
         const message = responseData?.message || responseData?.error || 'Failed to add user to API';
         throw new Error(message);
       }
   refreshTripUsers();
   showToast('User added successfully!');
-    } catch {
-      showToast('Failed to sync with API. Adding locally.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to add user to API';
+      showToast(message, 'error');
+      showToast('Adding user locally instead.');
       storage.addTripUser({
         firstName: trimmedFirstName,
         lastName: trimmedLastName,
         email,
-        phone: newPhone.trim() || undefined,
+        phone: trimmedPhone || undefined,
         dateOfBirth,
         gender: newGender.trim() || undefined,
+        mood: mood.length ? mood : undefined,
+        style: style.length ? style : undefined,
+        emergency: emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email
+          ? emergency
+          : undefined,
       });
       refreshTripUsers();
     }
@@ -349,11 +355,8 @@ export function UsersPage() {
   const handleDeleteUser = async (id: string) => {
     setDeleteLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      if (!response.ok) throw new Error('Failed to delete on API');
+      const response = await apiClient.delete(`/admin/users/${id}`);
+      if (response.status < 200 || response.status >= 300) throw new Error('Failed to delete on API');
       refreshTripUsers();
       showToast('User removed successfully!');
     } catch {
@@ -404,7 +407,15 @@ export function UsersPage() {
     const dateOfBirth = manageDobYear && manageDobMonth && manageDobDay
       ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
       : undefined;
-    const normalizedGender = manageGender.trim().toLowerCase() || undefined;
+    const normalizeGenderValue = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return '';
+      const lowered = trimmed.toLowerCase();
+      if (lowered.includes('prefer')) return 'other';
+      if (lowered === 'male' || lowered === 'female' || lowered === 'other') return lowered;
+      return lowered;
+    };
+    const normalizedGender = normalizeGenderValue(manageGender) || undefined;
     const payload: Record<string, unknown> = {
       mood: manageSelectedMoodIds,
       style: manageSelectedStyleIds,
@@ -438,12 +449,8 @@ export function UsersPage() {
       updateData.emergency = emergency;
     }
     try {
-      const response = await fetch(`${API_BASE}/${manageUserId}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) throw new Error('Failed to update on API');
+      const response = await apiClient.put(`/admin/users/${manageUserId}`, payload);
+      if (response.status < 200 || response.status >= 300) throw new Error('Failed to update on API');
       refreshTripUsers();
       showToast('User updated successfully!');
       resetManageDialog();
@@ -658,11 +665,21 @@ export function UsersPage() {
                                   : [...prev, mood.id]
                               );
                             }}
-                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-gray-800'}`}
-                            style={{
-                              backgroundColor: selected ? '#06B3C4' : '#F7F9FA',
-                              borderColor: selected ? '#06B3C4' : '#E5E7EB',
-                            }}
+                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
+                            style={selected
+                              ? {
+                                  backgroundColor: '#06B3C4',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'solid',
+                                  borderWidth: '1px',
+                                }
+                              : {
+                                  backgroundColor: '#ffffff',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
+                            }
                           >
                             {mood.icon ? (
                               <img
@@ -709,11 +726,21 @@ export function UsersPage() {
                                   : [...prev, style.id]
                               );
                             }}
-                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-gray-800'}`}
-                            style={{
-                              backgroundColor: selected ? '#06B3C4' : '#F7F9FA',
-                              borderColor: selected ? '#06B3C4' : '#E5E7EB',
-                            }}
+                            className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
+                            style={selected
+                              ? {
+                                  backgroundColor: '#06B3C4',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'solid',
+                                  borderWidth: '1px',
+                                }
+                              : {
+                                  backgroundColor: '#ffffff',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
+                            }
                           >
                             {style.icon ? (
                               <img
@@ -782,7 +809,7 @@ export function UsersPage() {
               </div>
               {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
-            <DialogFooter className="flex justify-end gap-2 mt-4">
+            <DialogFooter className="flex justify-end gap-1.5 mt-4">
               <Button
                 onClick={() => {
                   setDialogOpen(false);
@@ -891,7 +918,7 @@ export function UsersPage() {
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
                     Gender
                   </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
                     Actions
                   </th>
                 </tr>
@@ -920,8 +947,8 @@ export function UsersPage() {
                       <td className="py-3 px-4 text-sm text-gray-700">
                         {user.gender ?? '—'}
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-2 justify-start">
+                      <td className="py-3 px-6">
+                        <div className="flex items-center gap-1.5 justify-end">
                           <Button
                             type="button"
                             size="sm"
@@ -1293,7 +1320,7 @@ export function UsersPage() {
               </div>
             </div>
           </div>
-          <DialogFooter className="flex justify-end gap-2 mt-4">
+          <DialogFooter className="flex justify-end gap-1.5 mt-4">
             <Button
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"

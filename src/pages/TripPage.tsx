@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import axios from 'axios';
 import {
   Plus,
   MapPin,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { storage } from '@/lib/storage';
+import { apiClient, getApiBaseUrl } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,6 +43,38 @@ const getNumber = (value: unknown, fallback: number): number => {
     const parsed = Number(value);
     return Number.isNaN(parsed) ? fallback : parsed;
   }
+  return fallback;
+};
+
+const normalizeDateInput = (value?: string): string => {
+  if (!value) return '';
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toISOString().slice(0, 10);
+};
+
+const normalizeTripType = (value?: string): Trip['type'] => {
+  if (!value) return 'public';
+  const normalized = value.toLowerCase().replace(/\s+/g, '-');
+  if (normalized === 'invite-only' || normalized === 'inviteonly' || normalized === 'invite') return 'invite-only';
+  if (normalized === 'private') return 'private';
+  return 'public';
+};
+
+const getApiErrorMessage = (err: unknown, fallback: string): string => {
+  if (axios.isAxiosError(err)) {
+    const data = err.response?.data;
+    if (data && typeof data === 'object') {
+      const dataObj = data as Record<string, unknown>;
+      if (typeof dataObj.message === 'string') return dataObj.message;
+      if (dataObj.error && typeof dataObj.error === 'object') {
+        const errorObj = dataObj.error as Record<string, unknown>;
+        if (typeof errorObj.message === 'string') return errorObj.message;
+      }
+    }
+  }
+  if (err instanceof Error) return err.message;
   return fallback;
 };
 
@@ -178,16 +212,16 @@ export function TripPage() {
   const [createTripStep, setCreateTripStep] = useState<number>(1);
   const [editTripStep, setEditTripStep] = useState<number>(1);
   const [editingTrip, setEditingTrip] = useState<Trip | null>(null);
-  const [moodSelectionDialogOpen, setMoodSelectionDialogOpen] = useState(false);
-  const [styleSelectionDialogOpen, setStyleSelectionDialogOpen] = useState(false);
-  const [editStyleSelectionDialogOpen, setEditStyleSelectionDialogOpen] = useState(false);
-  const [editMoodSelectionDialogOpen, setEditMoodSelectionDialogOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [editParticipantSearchQuery, setEditParticipantSearchQuery] = useState('');
   const [newTripParticipantSearchQuery, setNewTripParticipantSearchQuery] = useState('');
   const [deleteTripDialogOpen, setDeleteTripDialogOpen] = useState(false);
   const [deleteTripTarget, setDeleteTripTarget] = useState<Trip | null>(null);
   const [deleteTripLoading, setDeleteTripLoading] = useState(false);
+  const [createTripStepLoading, setCreateTripStepLoading] = useState(false);
+  const [createTripId, setCreateTripId] = useState<string | null>(null);
+  const [createCoverFile, setCreateCoverFile] = useState<File | null>(null);
+  const [createCoverUploadLoading, setCreateCoverUploadLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
   const hasRefreshedTripsRef = useRef(false);
@@ -199,20 +233,30 @@ export function TripPage() {
   const moodOptions = apiMoods.length > 0 ? apiMoods : moods;
   const styleOptions = apiStyles.length > 0 ? apiStyles : styles;
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
-  const storedToken = typeof window !== 'undefined' ? localStorage.getItem('roamana_api_token') : null;
-  const API_TOKEN = import.meta.env.VITE_API_TOKEN || import.meta.env.VITE_API_REFRESH_TOKEN || storedToken || '';
-  const getAuthHeaders = useCallback(() => {
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
-    };
-    if (API_TOKEN) {
-      headers.Authorization = `Bearer ${API_TOKEN}`;
-    }
-    return headers;
-  }, [API_TOKEN]);
+  const API_BASE_URL = getApiBaseUrl();
   const shouldUseApi = Boolean(API_BASE_URL);
   const isObjectId = useCallback((value: string) => /^[a-f\d]{24}$/i.test(value), []);
+
+  // Memoized function to fetch trips from API
+  const fetchTripsFromApi = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const response = await apiClient.get('/admin/trips', {
+        signal,
+      });
+      const data = response.data;
+
+      if (data?.status && data.status !== 'success') {
+        throw new Error(data?.message || 'Trips request returned a non-success status');
+      }
+
+      const list = data?.data?.data || data?.data || data || [];
+      const normalizedTrips = Array.isArray(list) ? list.map(mapTripFromApi) : [];
+      setTripsFromApi(normalizedTrips);
+    } catch (err) {
+      if ((err as Error).name === 'AbortError' || axios.isCancel(err) || (err as Error).name === 'CanceledError') return;
+      throw err;
+    }
+  }, [setTripsFromApi]);
 
   useEffect(() => {
     if (!API_BASE_URL) return;
@@ -221,12 +265,10 @@ export function TripPage() {
 
     const fetchTripUsers = async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/admin/users`, {
-          headers: getAuthHeaders(),
+        const response = await apiClient.get('/admin/users', {
           signal: controller.signal,
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) return;
+        const data = response.data;
 
         const list = data?.data?.data || data?.data || data || [];
         const mapped = Array.isArray(list)
@@ -262,7 +304,7 @@ export function TripPage() {
     fetchTripUsers();
 
     return () => controller.abort();
-  }, [API_BASE_URL, getAuthHeaders]);
+  }, [API_BASE_URL]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -276,20 +318,14 @@ export function TripPage() {
     const fetchMoodsAndStyles = async () => {
       try {
         const [moodsResponse, stylesResponse] = await Promise.all([
-          fetch(`${API_BASE_URL}/moods/get-all-moods`, {
-            headers: getAuthHeaders(),
-            signal: controller.signal,
-          }),
-          fetch(`${API_BASE_URL}/styles/get-all-styles`, {
-            headers: getAuthHeaders(),
-            signal: controller.signal,
-          }),
+          apiClient.get('/moods/get-all-moods', { signal: controller.signal }),
+          apiClient.get('/styles/get-all-styles', { signal: controller.signal }),
         ]);
 
-        const moodsData = await moodsResponse.json().catch(() => ({}));
-        const stylesData = await stylesResponse.json().catch(() => ({}));
+        const moodsData = moodsResponse.data;
+        const stylesData = stylesResponse.data;
 
-        if (moodsResponse.ok) {
+        if (moodsResponse.status >= 200 && moodsResponse.status < 300) {
           const list = moodsData?.data?.data || moodsData?.data || moodsData || [];
           const transformed = Array.isArray(list)
             ? list.map((mood: any) => ({
@@ -305,7 +341,7 @@ export function TripPage() {
           setApiMoods(transformed);
         }
 
-        if (stylesResponse.ok) {
+        if (stylesResponse.status >= 200 && stylesResponse.status < 300) {
           const list = stylesData?.data?.data || stylesData?.data || stylesData || [];
           const transformed = Array.isArray(list)
             ? list.map((style: any) => ({
@@ -327,8 +363,9 @@ export function TripPage() {
     fetchMoodsAndStyles();
 
     return () => controller.abort();
-  }, [API_BASE_URL, getAuthHeaders]);
+  }, [API_BASE_URL]);
 
+  // Initial fetch of trips from API on mount
   useEffect(() => {
     if (!shouldUseApi || hasFetchedTripsFromApiRef.current) {
       return;
@@ -336,41 +373,36 @@ export function TripPage() {
 
     const controller = new AbortController();
 
-    const fetchTripsFromApi = async () => {
-      try {
-        const response = await fetch(`${API_BASE_URL}/admin/trips`, {
-          headers: getAuthHeaders(),
-          signal: controller.signal,
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.message || data?.error || `Failed to fetch trips (HTTP ${response.status})`);
-        }
-
-        if (data?.status && data.status !== 'success') {
-          throw new Error(data?.message || 'Trips request returned a non-success status');
-        }
-
-        const list = data?.data?.data || data?.data || data || [];
-        const normalizedTrips = Array.isArray(list) ? list.map(mapTripFromApi) : [];
-        setTripsFromApi(normalizedTrips);
+    fetchTripsFromApi(controller.signal)
+      .then(() => {
         showToast('Trips loaded from API successfully!');
         hasRefreshedTripsRef.current = true;
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
+        hasFetchedTripsFromApiRef.current = true;
+      })
+      .catch((err) => {
+        if ((err as Error).name === 'AbortError' || axios.isCancel(err) || (err as Error).name === 'CanceledError') return;
         const message = err instanceof Error ? err.message : 'Failed to load trips from API';
         showToast(`${message}. Loading local data...`, 'error');
         refreshTripsFromStorage();
         hasRefreshedTripsRef.current = true;
-      } finally {
         hasFetchedTripsFromApiRef.current = true;
-      }
-    };
-
-    fetchTripsFromApi();
+      });
 
     return () => controller.abort();
-  }, [API_BASE_URL, getAuthHeaders, refreshTripsFromStorage, setTripsFromApi, shouldUseApi, showToast]);
+  }, [shouldUseApi, fetchTripsFromApi, showToast, refreshTripsFromStorage]);
+
+  // Auto-refresh trips every 2 seconds when using API
+  useEffect(() => {
+    if (!shouldUseApi || !hasFetchedTripsFromApiRef.current) {
+      return;
+    }
+
+    const intervalId = setInterval(() => {
+      fetchTripsFromApi();
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
+  }, [shouldUseApi, fetchTripsFromApi]);
 
   // When Trip page is shown and trips are empty, reload from storage (seeds 20 sample trips if needed)
   useEffect(() => {
@@ -487,6 +519,7 @@ export function TripPage() {
   // Handle cover image upload (convert to data URL for persistence)
   const handleCoverImageUpload = (file: File | null) => {
     if (!file) return;
+    setCreateCoverFile(file);
     const reader = new FileReader();
     reader.onloadend = () => {
       const result = reader.result;
@@ -499,6 +532,7 @@ export function TripPage() {
 
   const handleClearCoverImage = () => {
     setNewTrip(prev => ({ ...prev, coverImage: '' }));
+    setCreateCoverFile(null);
     if (coverInputRef.current) {
       coverInputRef.current.value = '';
     }
@@ -560,19 +594,25 @@ export function TripPage() {
   const handleCreateTrip = async () => {
     // Validate required fields
     if (!newTrip.title.trim()) {
-      alert('Please enter a trip title');
+      showToast('Please enter a trip title', 'error');
       return;
     }
     if (!newTrip.destination.trim()) {
-      alert('Please enter a destination');
+      showToast('Please enter a destination', 'error');
       return;
     }
     if (!newTrip.startDate) {
-      alert('Please select a start date');
+      showToast('Please select a start date', 'error');
       return;
     }
     if (!newTrip.endDate) {
-      alert('Please select an end date');
+      showToast('Please select an end date', 'error');
+      return;
+    }
+    
+    // Validate date order
+    if (new Date(newTrip.endDate) < new Date(newTrip.startDate)) {
+      showToast('End date must be after the start date.', 'error');
       return;
     }
 
@@ -609,14 +649,13 @@ export function TripPage() {
       .map(id => moodOptions.find(m => m.id === id)?.name)
       .filter(Boolean) as string[];
 
-    const createdBy = auth.user?.id && isObjectId(auth.user.id) ? auth.user.id : undefined;
     const memberIds = (newTrip.participantIds ?? []).filter(isObjectId);
     const apiPayload = {
       tripName: newTrip.title.trim(),
       type: newTrip.type,
-      startDate: new Date(newTrip.startDate).toISOString(),
-      endDate: new Date(newTrip.endDate).toISOString(),
-      ...(createdBy ? { createdBy } : {}),
+      startDate: newTrip.startDate ? new Date(newTrip.startDate).toISOString() : undefined,
+      endDate: newTrip.endDate ? new Date(newTrip.endDate).toISOString() : undefined,
+      isFeatured: newTrip.isFeatured,
       members: memberIds,
       mood: {
         moods: moodNames,
@@ -632,8 +671,6 @@ export function TripPage() {
         },
         {}
       ),
-  isFeatured: newTrip.isFeatured,
-      wallpaper: newTrip.coverImage || null,
       locations: formattedPlaces.map(place => ({
         placeId: place.id,
         name: place.name,
@@ -652,22 +689,24 @@ export function TripPage() {
     };
 
     if (API_BASE_URL) {
+      if (!createTripId) {
+        showToast('Please complete step 1 before creating the trip.', 'error');
+        return;
+      }
+
       try {
-        const response = await fetch(`${API_BASE_URL}/admin/trips`, {
-          method: 'POST',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(apiPayload),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
-          throw new Error(data?.message || 'Failed to create trip');
+        const response = await apiClient.put(`/admin/trips/${createTripId}`, apiPayload);
+        const data = response.data;
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(data?.message || 'Failed to update trip');
         }
-        showToast('Trip created in API successfully!');
+        showToast('Trip updated in API successfully!');
       } catch (err) {
-        showToast(err instanceof Error ? err.message : 'Failed to create trip in API', 'error');
+        showToast(getApiErrorMessage(err, 'Failed to update trip in API'), 'error');
+        return;
       }
     }
-    
+
     addTrip({
       ...newTrip,
       itinerary: formattedItinerary,
@@ -699,20 +738,106 @@ export function TripPage() {
     setSelectedMoods([]);
     setSelectedStyles([]);
     setPlaces([]);
+    setCreateTripId(null);
+    setCreateCoverFile(null);
+    setCreateCoverUploadLoading(false);
 
     // Close dialog
     setTripDialogOpen(false);
   };
 
+  const handleCreateTripStepContinue = async () => {
+    if (createTripStep !== 1) {
+      if (createTripStep === 2) {
+        if (API_BASE_URL && createCoverFile) {
+          if (!createTripId) {
+            showToast('Please complete step 1 before uploading a cover image.', 'error');
+            return;
+          }
 
-  const calculateDuration = (startDate: string, endDate: string): string => {
-    if (!startDate || !endDate) return '-';
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    const nights = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-    const days = nights + 1;
-    return `${nights}N / ${days}D`;
+          const formData = new FormData();
+          formData.append('wallpaper', createCoverFile);
+
+          try {
+            setCreateCoverUploadLoading(true);
+            const response = await apiClient.put(`/admin/trips/${createTripId}`, formData);
+            const data = response.data;
+            if (response.status < 200 || response.status >= 300) {
+              throw new Error(data?.message || 'Failed to upload trip image');
+            }
+            showToast('Trip image uploaded successfully!');
+          } catch (err) {
+            showToast(getApiErrorMessage(err, 'Failed to upload trip image'), 'error');
+            return;
+          } finally {
+            setCreateCoverUploadLoading(false);
+          }
+        }
+      }
+
+      setCreateTripStep((step) => Math.min(3, step + 1));
+      return;
+    }
+
+    if (!newTrip.title.trim()) {
+      showToast('Please enter a trip title', 'error');
+      return;
+    }
+    if (!newTrip.destination.trim()) {
+      showToast('Please enter a destination', 'error');
+      return;
+    }
+    if (!newTrip.startDate) {
+      showToast('Please select a start date', 'error');
+      return;
+    }
+    if (!newTrip.endDate) {
+      showToast('Please select an end date', 'error');
+      return;
+    }
+    
+    // Validate date order
+    if (new Date(newTrip.endDate) < new Date(newTrip.startDate)) {
+      showToast('End date must be after the start date.', 'error');
+      return;
+    }
+
+    if (API_BASE_URL) {
+      const memberIds = (newTrip.participantIds ?? []).filter(isObjectId);
+      const apiPayload = {
+        tripName: newTrip.title.trim(),
+        type: newTrip.type,
+        startDate: newTrip.startDate,
+        endDate: newTrip.endDate,
+        isFeatured: newTrip.isFeatured,
+        members: memberIds,
+      };
+
+      try {
+        setCreateTripStepLoading(true);
+        const response = await apiClient.post('/admin/trips', apiPayload);
+        const data = response.data;
+        if (response.status < 200 || response.status >= 300) {
+          throw new Error(data?.message || 'Failed to create trip');
+        }
+        const createdTrip = data?.data?.data || data?.data || data;
+        const createdTripId = createdTrip?._id || createdTrip?.id || null;
+        if (createdTripId) {
+          setCreateTripId(String(createdTripId));
+        }
+        showToast('Trip created in API successfully!');
+      } catch (err) {
+        showToast(getApiErrorMessage(err, 'Failed to create trip in API'), 'error');
+        setCreateTripStepLoading(false);
+        return;
+      } finally {
+        setCreateTripStepLoading(false);
+      }
+    }
+
+    setCreateTripStep((step) => Math.min(3, step + 1));
   };
+
 
   const getDateForTripDay = (trip: Trip, dayNumber: number): string | null => {
     if (!trip.startDate) return null;
@@ -731,10 +856,14 @@ export function TripPage() {
     setEditingTrip({
       ...trip,
       participantIds: trip.participantIds ?? [],
-      type: trip.type ?? 'public',
+      type: normalizeTripType(trip.type),
       isFeatured: trip.isFeatured ?? false,
       overviewType: trip.overviewType ?? '',
       overviewNotes: trip.overviewNotes ?? '',
+      description: trip.description ?? '',
+      destination: trip.destination ?? '',
+      startDate: normalizeDateInput(trip.startDate),
+      endDate: normalizeDateInput(trip.endDate),
     });
     setEditingSelectedStyles(trip.styles ?? []);
     setEditingSelectedMoods(trip.moods ?? []);
@@ -828,6 +957,12 @@ export function TripPage() {
 
   const handleUpdateTrip = async () => {
     if (!editingTrip) return;
+    
+    // Validate date order
+    if (editingTrip.startDate && editingTrip.endDate && new Date(editingTrip.endDate) < new Date(editingTrip.startDate)) {
+      showToast('End date must be after the start date.', 'error');
+      return;
+    }
 
     let nextItinerary = editingTrip.itinerary || [];
 
@@ -907,32 +1042,21 @@ export function TripPage() {
           const formData = new FormData();
           formData.append('wallpaper', editCoverFile);
 
-          const headers = getAuthHeaders();
-          delete headers['Content-Type'];
-
-          const response = await fetch(`${API_BASE_URL}/admin/trips/${editingTrip.id}`, {
-            method: 'PUT',
-            headers,
-            body: formData,
-          });
-          const data = await response.json().catch(() => ({}));
-          if (!response.ok) {
+          const response = await apiClient.put(`/admin/trips/${editingTrip.id}`, formData);
+          const data = response.data;
+          if (response.status < 200 || response.status >= 300) {
             throw new Error(data?.message || 'Failed to update trip wallpaper');
           }
         }
 
-        const response = await fetch(`${API_BASE_URL}/admin/trips/${editingTrip.id}`, {
-          method: 'PUT',
-          headers: getAuthHeaders(),
-          body: JSON.stringify(apiPayload),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
+        const response = await apiClient.put(`/admin/trips/${editingTrip.id}`, apiPayload);
+        const data = response.data;
+        if (response.status < 200 || response.status >= 300) {
           throw new Error(data?.message || 'Failed to update trip');
         }
         showToast('Trip updated in API successfully!');
       } catch (err) {
-        showToast(err instanceof Error ? err.message : 'Failed to update trip in API', 'error');
+        showToast(getApiErrorMessage(err, 'Failed to update trip in API'), 'error');
         return;
       }
     }
@@ -953,16 +1077,13 @@ export function TripPage() {
     setDeleteTripLoading(true);
     if (API_BASE_URL && isObjectId(trip.id)) {
       try {
-        const response = await fetch(`${API_BASE_URL}/admin/trips/${trip.id}`, {
-          method: 'DELETE',
-          headers: getAuthHeaders(),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) {
+        const response = await apiClient.delete(`/admin/trips/${trip.id}`);
+        const data = response.data;
+        if (response.status < 200 || response.status >= 300) {
           throw new Error(data?.message || 'Failed to delete trip');
         }
       } catch (err) {
-        showToast(err instanceof Error ? err.message : 'Failed to delete trip', 'error');
+        showToast(getApiErrorMessage(err, 'Failed to delete trip'), 'error');
         setDeleteTripLoading(false);
         return;
       }
@@ -992,6 +1113,9 @@ export function TripPage() {
           setTripDialogOpen(open);
           if (open) {
             setCreateTripStep(1);
+            setCreateTripId(null);
+            setCreateCoverFile(null);
+            setCreateCoverUploadLoading(false);
           }
         }}
       >
@@ -1081,9 +1205,9 @@ export function TripPage() {
                       <option value="invite-only">Invite Only</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex flex-col">
                     <Label className="text-sm">Featured</Label>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 h-10">
                       <input
                         id="trip-featured"
                         type="checkbox"
@@ -1188,8 +1312,8 @@ export function TripPage() {
                   onChange={(e) => handleCoverImageUpload(e.target.files?.[0] || null)}
                 />
                 <div className="flex items-center justify-center">
-                  <div className="w-full max-w-md rounded-3xl border border-[#D7E4F3] bg-white p-6 shadow-sm">
-                    <div className="aspect-square w-full overflow-hidden rounded-2xl border border-[#D7E4F3] bg-[#A9C6F4] flex items-center justify-center">
+                  <div className="w-full max-w-md">
+                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-[#A9C6F4] flex items-center justify-center shadow-sm">
                       {newTrip.coverImage ? (
                         <img
                           src={newTrip.coverImage}
@@ -1208,8 +1332,9 @@ export function TripPage() {
                         className="text-white border-0 hover:opacity-90 rounded-full px-5"
                         style={{ backgroundColor: '#06B3C4' }}
                         onClick={() => coverInputRef.current?.click()}
+                        disabled={createCoverUploadLoading}
                       >
-                        {newTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
+                        {createCoverUploadLoading ? 'Uploading...' : newTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
                       </Button>
                       {newTrip.coverImage ? (
                         <button
@@ -1293,78 +1418,7 @@ export function TripPage() {
                 </div>
                 {/* Mood Selection Section */}
                 <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Best for Mood</Label>
-                    <Dialog open={moodSelectionDialogOpen} onOpenChange={setMoodSelectionDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          + Add Mood
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Select Moods</DialogTitle>
-                          <DialogDescription>
-                            Choose the moods that best describe this trip.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-wrap gap-2 py-4">
-                          {moodOptions.filter(mood => mood.isActive).map((mood) => {
-                            const isSelected = selectedMoods.includes(mood.id);
-                            return (
-                              <button
-                                key={mood.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedMoods(prev =>
-                                    prev.includes(mood.id)
-                                      ? prev.filter(id => id !== mood.id)
-                                      : [...prev, mood.id]
-                                  );
-                                }}
-                                className={`
-                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
-                                  transform transition-transform duration-200
-                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
-                                `}
-                                style={isSelected
-                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
-                                }
-                              >
-                                {mood.image ? (
-                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                    <img
-                                      src={mood.image}
-                                      alt={mood.name}
-                                      className="w-6 h-6 rounded-full object-cover"
-                                    />
-                                  </span>
-                                ) : mood.icon ? (
-                                  <span>{mood.icon}</span>
-                                ) : null}
-                                <span>{mood.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => setMoodSelectionDialogOpen(false)}
-                            className="text-white hover:opacity-90 border-0 font-medium"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            Done
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
+                  <Label className="text-base font-semibold">Best for Mood</Label>
                   <div className="flex flex-wrap gap-2">
                     {moodOptions.filter(mood => mood.isActive).length === 0 ? (
                       <p className="text-sm text-gray-500">No moods available yet.</p>
@@ -1384,12 +1438,22 @@ export function TripPage() {
                                     : [...prev, mood.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
                                 isSelected ? 'text-white' : 'text-[#06B3C4]'
                               }`}
                               style={isSelected
-                                ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                ? {
+                                    backgroundColor: '#06B3C4',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
+                                : {
+                                    backgroundColor: '#ffffff',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
                               }
                             >
                               {mood.image ? (
@@ -1413,78 +1477,7 @@ export function TripPage() {
 
                 {/* Style Selection Section */}
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Best for Style</Label>
-                    <Dialog open={styleSelectionDialogOpen} onOpenChange={setStyleSelectionDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          + Add Style
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Select Styles</DialogTitle>
-                          <DialogDescription>
-                            Choose the styles that best describe this trip.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-wrap gap-2 py-4">
-                          {styleOptions.filter(isStyleActive).map((style) => {
-                            const isSelected = selectedStyles.includes(style.id);
-                            return (
-                              <button
-                                key={style.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedStyles(prev =>
-                                    prev.includes(style.id)
-                                      ? prev.filter(id => id !== style.id)
-                                      : [...prev, style.id]
-                                  );
-                                }}
-                                className={`
-                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
-                                  transform transition-transform duration-200
-                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
-                                `}
-                                style={isSelected
-                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
-                                }
-                              >
-                                {style.image ? (
-                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                    <img
-                                      src={style.image}
-                                      alt={style.name}
-                                      className="w-6 h-6 rounded-full object-cover"
-                                    />
-                                  </span>
-                                ) : style.icon ? (
-                                  <span>{style.icon}</span>
-                                ) : null}
-                                <span>{style.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => setStyleSelectionDialogOpen(false)}
-                            className="text-white hover:opacity-90 border-0 font-medium"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            Done
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
+                  <Label className="text-base font-semibold">Best for Style</Label>
                   <div className="flex flex-wrap gap-2">
                     {styleOptions.filter(isStyleActive).length === 0 ? (
                       <p className="text-sm text-gray-500">No styles available yet.</p>
@@ -1504,12 +1497,22 @@ export function TripPage() {
                                     : [...prev, style.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
                                 isSelected ? 'text-white' : 'text-[#06B3C4]'
                               }`}
                               style={isSelected
-                                ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                ? {
+                                    backgroundColor: '#06B3C4',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
+                                : {
+                                    backgroundColor: '#ffffff',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
                               }
                             >
                               {style.image ? (
@@ -1532,7 +1535,7 @@ export function TripPage() {
                 </div>
               </div>
             )}
-            <DialogFooter className="gap-3">
+            <DialogFooter className="flex justify-end gap-2">
               <Button
                 type="button"
                 onClick={() => setTripDialogOpen(false)}
@@ -1554,11 +1557,12 @@ export function TripPage() {
               {createTripStep < 3 ? (
                 <Button
                   type="button"
-                  onClick={() => setCreateTripStep((step) => Math.min(3, step + 1))}
+                  onClick={handleCreateTripStepContinue}
+                  disabled={createTripStepLoading || createCoverUploadLoading}
                   className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
                   style={{ backgroundColor: '#06B3C4' }}
                 >
-                  Continue
+                  {createTripStepLoading || createCoverUploadLoading ? 'Saving...' : 'Continue'}
                 </Button>
               ) : (
                 <Button
@@ -1580,7 +1584,7 @@ export function TripPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
-            placeholder="Search trips by title, destination, or status..."
+            placeholder="Search trips by title or destination..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -1613,7 +1617,6 @@ export function TripPage() {
             return (
               trip.title.toLowerCase().includes(query) ||
               trip.destination.toLowerCase().includes(query) ||
-              (trip.status || 'Active').toLowerCase().includes(query) ||
               trip.description?.toLowerCase().includes(query)
             );
           });
@@ -1636,10 +1639,11 @@ export function TripPage() {
                 <thead>
                   <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Title</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Status</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Duration</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Start Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">End Date</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Type</th>
                     <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Cover Image</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1651,20 +1655,32 @@ export function TripPage() {
                       </div>
                     </td>
                     <td className="py-3 px-4">
-                      <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
-                          (trip.status || 'Active') === 'Active'
-                            ? 'text-white'
-                            : 'bg-gray-100 text-gray-600'
-                        }`}
-                        style={(trip.status || 'Active') === 'Active' ? { backgroundColor: '#06B3C4' } : undefined}
-                      >
-                        {trip.status || 'Active'}
+                      <span className="text-sm text-gray-700">
+                        {new Date(trip.startDate).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })}
                       </span>
                     </td>
-                    <td className="py-4 px-6">
+                    <td className="py-3 px-4">
                       <span className="text-sm text-gray-700">
-                        {calculateDuration(trip.startDate, trip.endDate)}
+                        {new Date(trip.endDate).toLocaleDateString('en-US', { 
+                          month: 'short', 
+                          day: 'numeric', 
+                          year: 'numeric' 
+                        })}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                        trip.type === 'private' 
+                          ? 'bg-purple-100 text-purple-800' 
+                          : trip.type === 'invite-only'
+                          ? 'bg-orange-100 text-orange-800'
+                          : 'bg-green-100 text-green-800'
+                      }`}>
+                        {trip.type || 'public'}
                       </span>
                     </td>
                     <td className="py-3 px-4">
@@ -1681,8 +1697,8 @@ export function TripPage() {
                         />
                       ) : null}
                     </td>
-                    <td className="py-3 px-4">
-                      <div className="flex items-center gap-1.5">
+                    <td className="py-3 px-6">
+                      <div className="flex items-center gap-1.5 justify-end">
                         <Button
                           size="sm"
                           onClick={() => handleEditTrip(trip)}
@@ -1819,8 +1835,13 @@ export function TripPage() {
                       return (
                         <div
                           key={moodId}
-                          className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 flex items-center gap-2"
-                          style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
+                          className="px-4 py-2 rounded-full text-sm font-medium text-white border border-dashed flex items-center gap-2"
+                          style={{
+                            backgroundColor: '#06B3C4',
+                            borderColor: '#06B3C4',
+                            borderStyle: 'dashed',
+                            borderWidth: '1px',
+                          }}
                         >
                           {mood.image ? (
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
@@ -1854,8 +1875,13 @@ export function TripPage() {
                       return (
                         <div
                           key={styleId}
-                          className="px-4 py-2 rounded-full text-sm font-medium text-white border-2 flex items-center gap-2"
-                          style={{ backgroundColor: '#06B3C4', borderColor: '#06B3C4' }}
+                          className="px-4 py-2 rounded-full text-sm font-medium text-white border border-dashed flex items-center gap-2"
+                          style={{
+                            backgroundColor: '#06B3C4',
+                            borderColor: '#06B3C4',
+                            borderStyle: 'dashed',
+                            borderWidth: '1px',
+                          }}
                         >
                           {style.image ? (
                             <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
@@ -2066,9 +2092,9 @@ export function TripPage() {
                       <option value="invite-only">Invite Only</option>
                     </select>
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 flex flex-col">
                     <Label className="text-sm">Featured</Label>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 h-10">
                       <input
                         id="edit-trip-featured"
                         type="checkbox"
@@ -2177,8 +2203,8 @@ export function TripPage() {
                   }}
                 />
                 <div className="flex items-center justify-center">
-                  <div className="w-full max-w-md rounded-3xl border border-[#D7E4F3] bg-white p-6 shadow-sm">
-                    <div className="aspect-square w-full overflow-hidden rounded-2xl border border-[#D7E4F3] bg-[#A9C6F4] flex items-center justify-center">
+                  <div className="w-full max-w-md">
+                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-[#A9C6F4] flex items-center justify-center shadow-sm">
                       {editingTrip.coverImage ? (
                         <img
                           src={editingTrip.coverImage}
@@ -2286,78 +2312,7 @@ export function TripPage() {
                 </div>
                 {/* Best for Mood */}
                 <div className="space-y-4 pt-2">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Best for Mood</Label>
-                    <Dialog open={editMoodSelectionDialogOpen} onOpenChange={setEditMoodSelectionDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          + Add Mood
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Select Moods</DialogTitle>
-                          <DialogDescription>
-                            Choose the moods that best describe this trip.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-wrap gap-2 py-4">
-                          {moodOptions.filter(mood => mood.isActive).map((mood) => {
-                            const isSelected = editingSelectedMoods.includes(mood.id);
-                            return (
-                              <button
-                                key={mood.id}
-                                type="button"
-                                onClick={() => {
-                                  setEditingSelectedMoods(prev =>
-                                    prev.includes(mood.id)
-                                      ? prev.filter(id => id !== mood.id)
-                                      : [...prev, mood.id]
-                                  );
-                                }}
-                                className={`
-                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
-                                  transform transition-transform duration-200
-                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
-                                `}
-                                style={isSelected
-                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
-                                }
-                              >
-                                {mood.image ? (
-                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                    <img
-                                      src={mood.image}
-                                      alt={mood.name}
-                                      className="w-6 h-6 rounded-full object-cover"
-                                    />
-                                  </span>
-                                ) : mood.icon ? (
-                                  <span>{mood.icon}</span>
-                                ) : null}
-                                <span>{mood.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => setEditMoodSelectionDialogOpen(false)}
-                            className="text-white hover:opacity-90 border-0 font-medium"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            Done
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
+                  <Label className="text-base font-semibold">Best for Mood</Label>
                   <div className="flex flex-wrap gap-2">
                     {moodOptions.filter(mood => mood.isActive).length === 0 ? (
                       <p className="text-sm text-gray-500">No moods available yet.</p>
@@ -2377,12 +2332,22 @@ export function TripPage() {
                                     : [...prev, mood.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
                                 isSelected ? 'text-white' : 'text-[#06B3C4]'
                               }`}
                               style={isSelected
-                                ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                ? {
+                                    backgroundColor: '#06B3C4',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
+                                : {
+                                    backgroundColor: '#ffffff',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
                               }
                             >
                               {mood.image ? (
@@ -2406,78 +2371,7 @@ export function TripPage() {
 
                 {/* Style Selection Section */}
                 <div className="space-y-4 pt-4 border-t">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Best for Style</Label>
-                    <Dialog open={editStyleSelectionDialogOpen} onOpenChange={setEditStyleSelectionDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="text-white hover:opacity-90 border-0 font-medium text-sm"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          + Add Style
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-md">
-                        <DialogHeader>
-                          <DialogTitle>Select Styles</DialogTitle>
-                          <DialogDescription>
-                            Choose the styles that best describe this trip.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="flex flex-wrap gap-2 py-4">
-                          {styleOptions.filter(isStyleActive).map((style) => {
-                            const isSelected = editingSelectedStyles.includes(style.id);
-                            return (
-                              <button
-                                key={style.id}
-                                type="button"
-                                onClick={() => {
-                                  setEditingSelectedStyles(prev =>
-                                    prev.includes(style.id)
-                                      ? prev.filter(id => id !== style.id)
-                                      : [...prev, style.id]
-                                  );
-                                }}
-                                className={`
-                                  px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2
-                                  transform transition-transform duration-200
-                                  ${isSelected ? 'scale-105 shadow-md text-white' : 'scale-100 text-[#06B3C4]'}
-                                `}
-                                style={isSelected
-                                  ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                  : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
-                                }
-                              >
-                                {style.image ? (
-                                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                    <img
-                                      src={style.image}
-                                      alt={style.name}
-                                      className="w-6 h-6 rounded-full object-cover"
-                                    />
-                                  </span>
-                                ) : style.icon ? (
-                                  <span>{style.icon}</span>
-                                ) : null}
-                                <span>{style.name}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <DialogFooter>
-                          <Button
-                            onClick={() => setEditStyleSelectionDialogOpen(false)}
-                            className="text-white hover:opacity-90 border-0 font-medium"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            Done
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
+                  <Label className="text-base font-semibold">Best for Style</Label>
                   <div className="flex flex-wrap gap-2">
                     {styleOptions.filter(isStyleActive).length === 0 ? (
                       <p className="text-sm text-gray-500">No styles available yet.</p>
@@ -2497,12 +2391,22 @@ export function TripPage() {
                                     : [...prev, style.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border-2 flex items-center gap-2 transition-colors ${
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
                                 isSelected ? 'text-white' : 'text-[#06B3C4]'
                               }`}
                               style={isSelected
-                                ? { backgroundColor: '#06B3C4', borderColor: '#06B3C4' }
-                                : { backgroundColor: '#ffffff', borderColor: '#06B3C4' }
+                                ? {
+                                    backgroundColor: '#06B3C4',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
+                                : {
+                                    backgroundColor: '#ffffff',
+                                    borderColor: '#06B3C4',
+                                    borderStyle: 'dashed',
+                                    borderWidth: '1px',
+                                  }
                               }
                             >
                               {style.image ? (
@@ -2525,7 +2429,7 @@ export function TripPage() {
                 </div>
               </div>
             )}
-            <DialogFooter className="gap-3">
+            <DialogFooter className="flex justify-end gap-2">
               <Button
                 onClick={() => {
                   setEditTripDialogOpen(false);

@@ -1,6 +1,6 @@
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
-import { Trash2, Plus, Edit, Search } from 'lucide-react';
+import { Trash2, Plus, Edit, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,9 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ColorPalette } from '@/components/ColorPalette';
 import { useEffect, useRef, useState } from 'react';
+import { apiClient } from '@/lib/apiClient';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 const IMAGE_LOAD_ERROR_MSG = 'Image could not be loaded. Try a smaller or different image.';
@@ -28,11 +30,13 @@ export function MoodPage() {
   const [newMoodColor, setNewMoodColor] = useState('#000000');
   const [newMoodIconFile, setNewMoodIconFile] = useState<File | null>(null);
   const [newMoodIconPreview, setNewMoodIconPreview] = useState('');
-  const [newMoodUserInputFile, setNewMoodUserInputFile] = useState<File | null>(null);
-  const [newMoodUserInputPreview, setNewMoodUserInputPreview] = useState('');
   const [editMoodName, setEditMoodName] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
 
   // Combined manage dialog state
   const [activeActionMood, setActiveActionMood] = useState<any>(null);
@@ -40,28 +44,13 @@ export function MoodPage() {
   const [manageMoodIconFile, setManageMoodIconFile] = useState<File | null>(null);
   const [manageMoodIconPreview, setManageMoodIconPreview] = useState('');
   const [manageMoodColor, setManageMoodColor] = useState('#000000');
-  const [manageMoodIsActive, setManageMoodIsActive] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteMoodId, setDeleteMoodId] = useState('');
   const [deleteMoodName, setDeleteMoodName] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
-  const addMoodUserInputImageRef = useRef<HTMLInputElement>(null);
   const manageMoodIconInputRef = useRef<HTMLInputElement>(null);
-
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
-  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
-  const MOODS_BASE = `${API_BASE_URL}/moods`;
-
-  const getAuthHeaders = () => ({
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_TOKEN}`,
-  });
-
-  const getFormDataHeaders = () => ({
-    'Authorization': `Bearer ${API_TOKEN}`,
-  });
 
   const mapApiMood = (mood: any) => ({
     id: String(mood.id || mood._id),
@@ -76,11 +65,9 @@ export function MoodPage() {
     setIsLoading(true);
     setApiError(null);
     try {
-      const response = await fetch(`${MOODS_BASE}/get-all-moods`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) {
+      const response = await apiClient.get('/moods/get-all-moods');
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to fetch moods from API');
       }
       const list = data?.data?.data || data?.data || data || [];
@@ -99,6 +86,11 @@ export function MoodPage() {
   useEffect(() => {
     fetchMoodsFromAPI();
   }, []);
+
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, moods.length]);
 
   const handleCreateMood = async () => {
     if (!newMoodName.trim()) {
@@ -123,16 +115,9 @@ export function MoodPage() {
       if (newMoodIconFile) {
         formData.append('icon', newMoodIconFile);
       }
-      if (newMoodUserInputFile) {
-        formData.append('image', newMoodUserInputFile);
-      }
-      const response = await fetch(`${MOODS_BASE}/create-mood`, {
-        method: 'POST',
-        headers: getFormDataHeaders(),
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.post('/moods/create-mood', formData);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to create mood');
       }
       showToast('Mood added successfully!');
@@ -140,8 +125,6 @@ export function MoodPage() {
       setNewMoodColor('#000000');
       setNewMoodIconFile(null);
       setNewMoodIconPreview('');
-  setNewMoodUserInputFile(null);
-  setNewMoodUserInputPreview('');
       setDialogOpen(false);
       fetchMoodsFromAPI();
     } catch (err) {
@@ -156,16 +139,11 @@ export function MoodPage() {
       return;
     }
     try {
-      const payload = {
+      const response = await apiClient.put(`/moods/update-mood/${editingMood.id}`, {
         moodName: editMoodName.trim(),
-      };
-      const response = await fetch(`${MOODS_BASE}/update-mood/${editingMood.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to update mood');
       }
       showToast('Mood updated successfully!');
@@ -181,12 +159,9 @@ export function MoodPage() {
   const handleDeleteMood = async (id: string) => {
     setDeleteLoading(true);
     try {
-      const response = await fetch(`${MOODS_BASE}/delete-mood/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.delete(`/moods/delete-mood/${id}`);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to delete mood');
       }
       showToast('Mood deleted successfully!');
@@ -195,7 +170,6 @@ export function MoodPage() {
         setManageMoodName('');
         setManageMoodIconPreview('');
         setManageMoodIconFile(null);
-        setManageMoodIsActive(false);
       }
       fetchMoodsFromAPI();
     } catch (err) {
@@ -222,7 +196,6 @@ export function MoodPage() {
     setManageMoodIconPreview(mood.image || '');
     setManageMoodIconFile(null);
     setManageMoodColor(mood.color || '#000000');
-    setManageMoodIsActive(mood.isActive);
   };
 
   const handleSaveManageMood = async () => {
@@ -239,13 +212,9 @@ export function MoodPage() {
       if (manageMoodIconFile) {
         formData.append('icon', manageMoodIconFile);
       }
-      const response = await fetch(`${MOODS_BASE}/update-mood/${activeActionMood.id}`, {
-        method: 'PUT',
-        headers: getFormDataHeaders(),
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.put(`/moods/update-mood/${activeActionMood.id}`, formData);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to update mood');
       }
       showToast('Mood updated successfully!');
@@ -254,7 +223,6 @@ export function MoodPage() {
       setManageMoodIconPreview('');
       setManageMoodIconFile(null);
   setManageMoodColor('#000000');
-      setManageMoodIsActive(false);
       fetchMoodsFromAPI();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update mood';
@@ -268,7 +236,6 @@ export function MoodPage() {
     setManageMoodIconPreview('');
     setManageMoodIconFile(null);
     setManageMoodColor('#000000');
-    setManageMoodIsActive(false);
   };
 
   return (
@@ -279,7 +246,7 @@ export function MoodPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
-            placeholder="Search moods by name or status..."
+            placeholder="Search moods by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
@@ -294,8 +261,6 @@ export function MoodPage() {
               setNewMoodColor('#000000');
               setNewMoodIconFile(null);
               setNewMoodIconPreview('');
-              setNewMoodUserInputFile(null);
-              setNewMoodUserInputPreview('');
             }
           }}
         >
@@ -305,7 +270,7 @@ export function MoodPage() {
               Add Mood
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-heading">Add New Mood</DialogTitle>
               <DialogDescription>
@@ -329,123 +294,65 @@ export function MoodPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="add-mood-icon">Icon</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                      {newMoodIconPreview ? (
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                            src={newMoodIconPreview}
-                          alt="Icon preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={addMoodIconInputRef}
-                      id="add-mood-icon"
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                          alert('Image is too large. Please choose an image under 5 MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        setNewMoodIconFile(file);
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setNewMoodIconPreview(result);
-                        };
-                        reader.onerror = () => {
-                          alert(IMAGE_LOAD_ERROR_MSG);
-                        };
-                        reader.readAsDataURL(file);
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {newMoodIconPreview ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={newMoodIconPreview}
+                        alt="Icon preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No icon</span>
+                    </div>
+                  )}
+                  <input
+                    ref={addMoodIconInputRef}
+                    id="add-mood-icon"
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        alert('Image is too large. Please choose an image under 5 MB.');
                         e.target.value = '';
-                      }}
-                    />
-                  </div>
+                        return;
+                      }
+                      setNewMoodIconFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const result = reader.result;
+                        if (typeof result === 'string') setNewMoodIconPreview(result);
+                      };
+                      reader.onerror = () => {
+                        alert(IMAGE_LOAD_ERROR_MSG);
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
                   <label
                     htmlFor="add-mood-icon"
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                      {newMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
+                    {newMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
                   </label>
                 </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="mood-color">Color</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="mood-color"
-                    type="color"
-                    value={newMoodColor}
-                    onChange={(e) => setNewMoodColor(e.target.value)}
-                    className="h-9 w-16 cursor-pointer rounded border border-gray-200 bg-white"
-                  />
-                  <Input
-                    value={newMoodColor}
-                    onChange={(e) => setNewMoodColor(e.target.value)}
-                    placeholder="#FFCAEC"
-                    className="flex-1"
-                  />
-                </div>
+                <ColorPalette
+                  selectedColor={newMoodColor}
+                  onColorSelect={setNewMoodColor}
+                  showCustomPicker={true}
+                />
               </div>
 
-              <div className="space-y-2">
-                <Label>User input image</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {newMoodUserInputPreview ? (
-                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={newMoodUserInputPreview}
-                          alt="User input preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={addMoodUserInputImageRef}
-                      id="add-mood-user-input-image"
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                          alert('Image is too large. Please choose an image under 5 MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        setNewMoodUserInputFile(file);
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setNewMoodUserInputPreview(result);
-                        };
-                        reader.onerror = () => {
-                          alert(IMAGE_LOAD_ERROR_MSG);
-                        };
-                        reader.readAsDataURL(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  <label
-                    htmlFor="add-mood-user-input-image"
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    {newMoodUserInputPreview ? 'Change image' : 'Upload image'}
-                  </label>
-                </div>
-              </div>
             </div>
             <DialogFooter>
               <Button
@@ -455,8 +362,6 @@ export function MoodPage() {
                   setNewMoodColor('#000000');
                   setNewMoodIconFile(null);
                   setNewMoodIconPreview('');
-                  setNewMoodUserInputFile(null);
-                  setNewMoodUserInputPreview('');
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
@@ -492,11 +397,14 @@ export function MoodPage() {
           const query = searchQuery.toLowerCase().trim();
           const filteredMoods = !query
             ? moods
-            : moods.filter(
-                (mood) =>
-                  mood.name.toLowerCase().includes(query) ||
-                  (mood.isActive ? 'active' : 'inactive').includes(query)
-              );
+            : moods.filter((mood) => mood.name.toLowerCase().includes(query));
+
+          // Pagination calculations
+          const totalPages = Math.ceil(filteredMoods.length / ITEMS_PER_PAGE) || 1;
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedMoods = filteredMoods.slice(startIndex, endIndex);
+
           return filteredMoods.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500">
@@ -510,13 +418,12 @@ export function MoodPage() {
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
                   <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
                   <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[15%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Status</th>
-                  <th className="w-[20%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Color</th>
+                  <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredMoods.map((mood) => {
-                  const isActive = mood.isActive;
+                {paginatedMoods.map((mood) => {
                   return (
                     <tr
                       key={mood.id}
@@ -543,20 +450,15 @@ export function MoodPage() {
                           <span className="text-sm text-gray-400">—</span>
                         )}
                       </td>
-                      <td className="w-[15%] py-3 px-6 text-center">
-                        <span
-                          className={`inline-flex items-center justify-center min-w-20 px-3 py-1 rounded-full text-xs font-medium text-center ${
-                            isActive
-                              ? 'text-white'
-                              : 'bg-gray-100 text-gray-600'
-                          }`}
-                          style={isActive ? { backgroundColor: '#06B3C4' } : undefined}
-                        >
-                          {isActive ? 'Active' : 'Inactive'}
-                        </span>
+                      <td className="w-[15%] py-4 px-6 text-left">
+                        <div 
+                          className="w-8 h-8 rounded border border-gray-300"
+                          style={{ backgroundColor: mood.color || '#000000' }}
+                          title={mood.color || '#000000'}
+                        />
                       </td>
-                      <td className="w-[20%] py-3 px-6 text-center">
-                        <div className="flex items-center gap-1.5 justify-center">
+                      <td className="w-[20%] py-3 px-6 text-right">
+                        <div className="flex items-center gap-1.5 justify-end">
                           <Button
                             size="sm"
                             onClick={() => handleOpenManageDialog(mood)}
@@ -580,6 +482,69 @@ export function MoodPage() {
                 })}
               </tbody>
             </table>
+            
+            {/* Pagination Controls */}
+            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredMoods.length)} of {filteredMoods.length} moods
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    const showPage = page === 1 || 
+                                    page === totalPages || 
+                                    (page >= currentPage - 1 && page <= currentPage + 1);
+                    
+                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                                        (page === currentPage + 2 && currentPage < totalPages - 2);
+                    
+                    if (showEllipsis) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    
+                    if (!showPage) return null;
+                    
+                    return (
+                      <Button
+                        key={page}
+                        variant="ghost"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
+                          currentPage === page
+                            ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                            : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                        }`}
+                        style={
+                          currentPage === page 
+                            ? { backgroundColor: '#06B3C4' } 
+                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                        }
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
           );
         })()}
@@ -647,7 +612,7 @@ export function MoodPage() {
             handleCancelManageMood();
           }
         }}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-lg">
             <DialogHeader>
               <DialogTitle className="font-heading">Manage Mood</DialogTitle>
               <DialogDescription>
@@ -667,48 +632,50 @@ export function MoodPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="manage-mood-icon">Icon</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {manageMoodIconPreview ? (
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={manageMoodIconPreview}
-                          alt="Mood icon preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={manageMoodIconInputRef}
-                      id={`manage-icon-${activeActionMood.id}`}
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.size > MAX_IMAGE_SIZE_BYTES) {
-                          alert('Image is too large. Please choose an image under 5 MB.');
-                          e.target.value = '';
-                          return;
-                        }
-                        setManageMoodIconFile(file);
-                        const reader = new FileReader();
-                        reader.onloadend = () => {
-                          const result = reader.result;
-                          if (typeof result === 'string') setManageMoodIconPreview(result);
-                        };
-                        reader.onerror = () => {
-                          alert(IMAGE_LOAD_ERROR_MSG);
-                        };
-                        reader.readAsDataURL(file);
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {manageMoodIconPreview ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={manageMoodIconPreview}
+                        alt="Mood icon preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No icon</span>
+                    </div>
+                  )}
+                  <input
+                    ref={manageMoodIconInputRef}
+                    id={`manage-icon-${activeActionMood.id}`}
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        alert('Image is too large. Please choose an image under 5 MB.');
                         e.target.value = '';
-                      }}
-                    />
-                  </div>
+                        return;
+                      }
+                      setManageMoodIconFile(file);
+                      const reader = new FileReader();
+                      reader.onloadend = () => {
+                        const result = reader.result;
+                        if (typeof result === 'string') setManageMoodIconPreview(result);
+                      };
+                      reader.onerror = () => {
+                        alert(IMAGE_LOAD_ERROR_MSG);
+                      };
+                      reader.readAsDataURL(file);
+                      e.target.value = '';
+                    }}
+                  />
                   <label
                     htmlFor={`manage-icon-${activeActionMood.id}`}
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
                     {manageMoodIconPreview ? 'Change Icon' : 'Upload Icon'}
@@ -718,35 +685,13 @@ export function MoodPage() {
 
               <div className="space-y-2">
                 <Label htmlFor="manage-mood-color">Color</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="manage-mood-color"
-                    type="color"
-                    value={manageMoodColor}
-                    onChange={(e) => setManageMoodColor(e.target.value)}
-                    className="h-9 w-16 cursor-pointer rounded border border-gray-200 bg-white"
-                  />
-                  <Input
-                    value={manageMoodColor}
-                    onChange={(e) => setManageMoodColor(e.target.value)}
-                    placeholder="#FFCAEC"
-                    className="flex-1"
-                  />
-                </div>
+                <ColorPalette
+                  selectedColor={manageMoodColor}
+                  onColorSelect={setManageMoodColor}
+                  showCustomPicker={true}
+                />
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="manage-mood-status">Status</Label>
-                <select
-                  id="manage-mood-status"
-                  value={manageMoodIsActive ? 'Active' : 'Inactive'}
-                  onChange={(e) => setManageMoodIsActive(e.target.value === 'Active')}
-                  className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
             </div>
             <DialogFooter className="flex flex-row justify-between w-full">
               <Button

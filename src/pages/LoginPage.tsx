@@ -146,7 +146,6 @@ export function LoginPage() {
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     className="pl-10 bg-white border-gray-200"
-                    style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                   />
                 </div>
               </div>
@@ -163,7 +162,6 @@ export function LoginPage() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       className="pl-10 pr-14 bg-white border-gray-200"
-                      style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                     />
                     <button
                       type="button"
@@ -224,7 +222,6 @@ export function LoginPage() {
                     value={forgotEmail || email}
                     onChange={(e) => setForgotEmail(e.target.value)}
                     className="pl-10 bg-white border-gray-200"
-                    style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                   />
                 </div>
               </div>
@@ -278,7 +275,6 @@ export function LoginPage() {
                     value={otpInput}
                     onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, ''))}
                     className="pl-10 bg-white border-gray-200"
-                    style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                   />
                 </div>
               </div>
@@ -293,7 +289,6 @@ export function LoginPage() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     className="pl-10 pr-14 bg-white border-gray-200"
-                    style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                   />
                   <button
                     type="button"
@@ -315,7 +310,6 @@ export function LoginPage() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     className="pl-10 bg-white border-gray-200"
-                    style={{ focusBorderColor: '#03A9F4', focusRingColor: '#03A9F4' }}
                   />
                 </div>
               </div>

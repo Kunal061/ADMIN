@@ -91,6 +91,7 @@ export interface MoodOption {
   description: string;
   icon: string;
   image?: string;
+  color?: string;
   isActive: boolean;
   moodImage?: MoodImage;
 }

@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback, ty
 import type { User, Trip, StyleOption, MoodOption, AuthState } from '@/types';
 import { storage, defaultStyles, defaultMoods } from '@/lib/storage';
 import { loginWithCredentials } from '@/lib/authApi';
+import { tokenStorageKey } from '@/lib/apiClient';
 
 interface AppContextType {
   // Auth
@@ -203,7 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (result.token) {
         try {
-          localStorage.setItem('roamana_api_token', result.token);
+          localStorage.setItem(tokenStorageKey, result.token);
         } catch (e) {
           console.error('Failed to persist API token', e);
         }
@@ -248,7 +249,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user: null,
     });
     try {
-      localStorage.removeItem('roamana_api_token');
+      localStorage.removeItem(tokenStorageKey);
     } catch (e) {
       console.error('Failed to clear API token', e);
     }

@@ -1,6 +1,6 @@
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
-import { Trash2, Plus, Edit, Search } from 'lucide-react';
+import { Trash2, Plus, Edit, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useState, useRef, useEffect } from 'react';
 import type { StyleOption } from '@/types';
+import { apiClient } from '@/lib/apiClient';
 
 export function StylePage() {
   const { styles, showToast } = useApp();
@@ -25,32 +26,24 @@ export function StylePage() {
   const [newStyleName, setNewStyleName] = useState('');
   const [newStyleIconFile, setNewStyleIconFile] = useState<File | null>(null);
   const [newStyleIconPreview, setNewStyleIconPreview] = useState('');
-  const [newStyleImageFile, setNewStyleImageFile] = useState<File | null>(null);
-  const [newStyleImagePreview, setNewStyleImagePreview] = useState('');
   const [editStyleName, setEditStyleName] = useState('');
   
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 15;
 
   // Combined manage dialog state
   const [activeActionStyle, setActiveActionStyle] = useState<any>(null);
   const [manageStyleName, setManageStyleName] = useState('');
   const [manageStyleImage, setManageStyleImage] = useState('');
-  const [manageStyleUserInputImage, setManageStyleUserInputImage] = useState('');
   const [manageStyleIconFile, setManageStyleIconFile] = useState<File | null>(null);
-  const [manageStyleImageFile, setManageStyleImageFile] = useState<File | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteStyleId, setDeleteStyleId] = useState('');
   const [deleteStyleName, setDeleteStyleName] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, '');
-  const API_TOKEN = import.meta.env.VITE_API_TOKEN;
-  const STYLES_BASE = `${API_BASE_URL}/styles`;
-
-  const getAuthHeaders = () => ({
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${API_TOKEN}`,
-  });
 
   const mapApiStyle = (style: any): StyleOption => ({
     id: String(style.id || style._id),
@@ -63,11 +56,9 @@ export function StylePage() {
     setIsLoading(true);
     setApiError(null);
     try {
-      const response = await fetch(`${STYLES_BASE}/get-all-styles`, {
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json();
-      if (!response.ok) {
+      const response = await apiClient.get('/styles/get-all-styles');
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to fetch styles');
       }
       const list = data?.data?.data || data?.data || data || [];
@@ -89,26 +80,23 @@ export function StylePage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset to page 1 when search query changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, displayStyles.length]);
+
   // Refs for file inputs
   const addStyleIconInputRef = useRef<HTMLInputElement>(null);
-  const addStyleImageInputRef = useRef<HTMLInputElement>(null);
   const manageStyleIconInputRef = useRef<HTMLInputElement>(null);
-  const manageStyleImageInputRef = useRef<HTMLInputElement>(null);
 
   const handleIconUpload = async (styleId: string, file: File | null) => {
     if (!file) return;
     const formData = new FormData();
     formData.append('icon', file);
     try {
-      const response = await fetch(`${STYLES_BASE}/update-style/${styleId}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${API_TOKEN}`,
-        },
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.put(`/styles/update-style/${styleId}`, formData);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to update style');
       }
       showToast('Style updated successfully!');
@@ -125,15 +113,8 @@ export function StylePage() {
     setNewStyleIconFile(null);
   };
 
-  const clearImagePreview = () => {
-    if (newStyleImagePreview) URL.revokeObjectURL(newStyleImagePreview);
-    setNewStyleImagePreview('');
-    setNewStyleImageFile(null);
-  };
-
   const clearAddStyleMedia = () => {
     clearIconPreview();
-    clearImagePreview();
   };
 
   const handleCreateStyle = async () => {
@@ -144,17 +125,10 @@ export function StylePage() {
     const formData = new FormData();
     formData.append('name', newStyleName.trim());
     if (newStyleIconFile) formData.append('icon', newStyleIconFile);
-    if (newStyleImageFile) formData.append('image', newStyleImageFile);
     try {
-      const response = await fetch(`${STYLES_BASE}/create-style`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${API_TOKEN}`,
-        },
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.post('/styles/create-style', formData);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to create style');
       }
       showToast('Style added successfully!');
@@ -174,17 +148,13 @@ export function StylePage() {
       return;
     }
     try {
-      const response = await fetch(`${STYLES_BASE}/update-style/${editingStyle.id}`, {
-        method: 'PUT',
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          name: editStyleName.trim(),
-          icon: editingStyle.icon || undefined,
-          image: editingStyle.image || undefined,
-        }),
+      const response = await apiClient.put(`/styles/update-style/${editingStyle.id}`, {
+        name: editStyleName.trim(),
+        icon: editingStyle.icon || undefined,
+        image: editingStyle.image || undefined,
       });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to update style');
       }
       showToast('Style updated successfully!');
@@ -200,12 +170,9 @@ export function StylePage() {
   const handleDeleteStyle = async (id: string) => {
     setDeleteLoading(true);
     try {
-      const response = await fetch(`${STYLES_BASE}/delete-style/${id}`, {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.delete(`/styles/delete-style/${id}`);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to delete style');
       }
       showToast('Style deleted successfully!');
@@ -214,7 +181,6 @@ export function StylePage() {
         setActiveActionStyle(null);
         setManageStyleName('');
         setManageStyleImage('');
-        setManageStyleUserInputImage('');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete style';
@@ -238,11 +204,8 @@ export function StylePage() {
     setActiveActionStyle(style);
     setManageStyleName(style.name);
     if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-    if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
     setManageStyleImage(style.icon || '');
-    setManageStyleUserInputImage(style.image || '');
     setManageStyleIconFile(null);
-    setManageStyleImageFile(null);
   };
 
   const handleManageIconUpload = (file: File | null) => {
@@ -263,17 +226,10 @@ export function StylePage() {
     const formData = new FormData();
     formData.append('name', manageStyleName.trim());
     if (manageStyleIconFile) formData.append('icon', manageStyleIconFile);
-    if (manageStyleImageFile) formData.append('image', manageStyleImageFile);
     try {
-      const response = await fetch(`${STYLES_BASE}/update-style/${activeActionStyle.id}`, {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${API_TOKEN}`,
-        },
-        body: formData,
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
+      const response = await apiClient.put(`/styles/update-style/${activeActionStyle.id}`, formData);
+      const data = response.data;
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to update style');
       }
       showToast('Style updated successfully!');
@@ -281,11 +237,8 @@ export function StylePage() {
       setActiveActionStyle(null);
       setManageStyleName('');
       if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-      if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
       setManageStyleImage('');
-      setManageStyleUserInputImage('');
       setManageStyleIconFile(null);
-      setManageStyleImageFile(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update style';
       showToast(message, 'error');
@@ -296,11 +249,8 @@ export function StylePage() {
     setActiveActionStyle(null);
     setManageStyleName('');
     if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-    if (manageStyleUserInputImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleUserInputImage);
     setManageStyleImage('');
-    setManageStyleUserInputImage('');
     setManageStyleIconFile(null);
-    setManageStyleImageFile(null);
   };
 
   return (
@@ -356,40 +306,42 @@ export function StylePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Icon</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {newStyleIconPreview ? (
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={newStyleIconPreview}
-                          alt="Icon preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={addStyleIconInputRef}
-                      id="add-style-icon"
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const previewUrl = URL.createObjectURL(file);
-                        setNewStyleIconPreview((prev) => {
-                          if (prev) URL.revokeObjectURL(prev);
-                          return previewUrl;
-                        });
-                        setNewStyleIconFile(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
+                <Label htmlFor="add-style-icon">Icon</Label>
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {newStyleIconPreview ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={newStyleIconPreview}
+                        alt="Icon preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No icon</span>
+                    </div>
+                  )}
+                  <input
+                    ref={addStyleIconInputRef}
+                    id="add-style-icon"
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const previewUrl = URL.createObjectURL(file);
+                      setNewStyleIconPreview((prev) => {
+                        if (prev) URL.revokeObjectURL(prev);
+                        return previewUrl;
+                      });
+                      setNewStyleIconFile(file);
+                      e.target.value = '';
+                    }}
+                  />
                   <label
                     htmlFor="add-style-icon"
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
                     {newStyleIconPreview ? 'Change Icon' : 'Upload Icon'}
@@ -397,47 +349,6 @@ export function StylePage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>User input image</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {newStyleImagePreview ? (
-                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={newStyleImagePreview}
-                          alt="User input preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={addStyleImageInputRef}
-                      id="add-style-user-input-image"
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const previewUrl = URL.createObjectURL(file);
-                        setNewStyleImagePreview((prev) => {
-                          if (prev) URL.revokeObjectURL(prev);
-                          return previewUrl;
-                        });
-                        setNewStyleImageFile(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  <label
-                    htmlFor="add-style-user-input-image"
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    {newStyleImagePreview ? 'Change image' : 'Upload image'}
-                  </label>
-                </div>
-              </div>
             </div>
             <DialogFooter>
               <Button
@@ -477,6 +388,13 @@ export function StylePage() {
             : displayStyles.filter((style) =>
                 style.name.toLowerCase().includes(query)
               );
+
+          // Pagination calculations
+          const totalPages = Math.ceil(filteredStyles.length / ITEMS_PER_PAGE) || 1;
+          const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+          const endIndex = startIndex + ITEMS_PER_PAGE;
+          const paginatedStyles = filteredStyles.slice(startIndex, endIndex);
+
           return filteredStyles.length === 0 ? (
             <div className="text-center py-12">
               {isLoading ? (
@@ -494,12 +412,11 @@ export function StylePage() {
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
                   <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
                   <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Image</th>
-                  <th className="w-[20%] text-center py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                  <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredStyles.map((style) => {
+                {paginatedStyles.map((style) => {
                   return (
                     <tr
                       key={style.id}
@@ -535,21 +452,8 @@ export function StylePage() {
                           />
                         </div>
                       </td>
-                      <td className="w-[25%] py-3 px-6 text-left">
-                        {style.image ? (
-                          <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                            <img
-                              src={style.image}
-                              alt={`${style.name} preview`}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="w-[20%] py-3 px-6 text-center">
-                        <div className="flex items-center gap-1.5 justify-center">
+                      <td className="w-[20%] py-3 px-6 text-right">
+                        <div className="flex items-center gap-1.5 justify-end">
                           <Button
                             size="sm"
                             onClick={() => handleOpenManageDialog(style)}
@@ -573,6 +477,69 @@ export function StylePage() {
                 })}
               </tbody>
             </table>
+            
+            {/* Pagination Controls */}
+            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
+              <div className="text-sm text-gray-600">
+                Showing {startIndex + 1} to {Math.min(endIndex, filteredStyles.length)} of {filteredStyles.length} styles
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                    const showPage = page === 1 || 
+                                    page === totalPages || 
+                                    (page >= currentPage - 1 && page <= currentPage + 1);
+                    
+                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                                        (page === currentPage + 2 && currentPage < totalPages - 2);
+                    
+                    if (showEllipsis) {
+                      return <span key={page} className="px-2 text-gray-500">...</span>;
+                    }
+                    
+                    if (!showPage) return null;
+                    
+                    return (
+                      <Button
+                        key={page}
+                        variant="ghost"
+                        onClick={() => setCurrentPage(page)}
+                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
+                          currentPage === page
+                            ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                            : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                        }`}
+                        style={
+                          currentPage === page 
+                            ? { backgroundColor: '#06B3C4' } 
+                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                        }
+                      >
+                        {page}
+                      </Button>
+                    );
+                  })}
+                </div>
+
+                <Button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: '#06B3C4' }}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
           </div>
           );
         })()}
@@ -660,32 +627,34 @@ export function StylePage() {
               
               <div className="space-y-2">
                 <Label htmlFor="manage-style-icon">Icon</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {manageStyleImage ? (
-                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={manageStyleImage}
-                          alt="Style icon preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={manageStyleIconInputRef}
-                      id={`manage-icon-${activeActionStyle.id}`}
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        handleManageIconUpload(e.target.files?.[0] || null);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {manageStyleImage ? (
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={manageStyleImage}
+                        alt="Style icon preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No icon</span>
+                    </div>
+                  )}
+                  <input
+                    ref={manageStyleIconInputRef}
+                    id={`manage-icon-${activeActionStyle.id}`}
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      handleManageIconUpload(e.target.files?.[0] || null);
+                      e.target.value = '';
+                    }}
+                  />
                   <label
                     htmlFor={`manage-icon-${activeActionStyle.id}`}
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
                     {manageStyleImage ? 'Change Icon' : 'Upload Icon'}
@@ -693,47 +662,6 @@ export function StylePage() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>User input image</Label>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    {manageStyleUserInputImage ? (
-                      <div className="w-14 h-10 rounded overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
-                          src={manageStyleUserInputImage}
-                          alt="User input preview"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : null}
-                    <input
-                      ref={manageStyleImageInputRef}
-                      id={`manage-user-input-image-${activeActionStyle.id}`}
-                      type="file"
-                      accept="image/*"
-                      className="visually-hidden-input"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        const previewUrl = URL.createObjectURL(file);
-                        setManageStyleUserInputImage((prev) => {
-                          if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
-                          return previewUrl;
-                        });
-                        setManageStyleImageFile(file);
-                        e.target.value = '';
-                      }}
-                    />
-                  </div>
-                  <label
-                    htmlFor={`manage-user-input-image-${activeActionStyle.id}`}
-                    className="inline-flex items-center justify-center h-9 rounded-md px-3 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer shrink-0"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    {manageStyleUserInputImage ? 'Change image' : 'Upload image'}
-                  </label>
-                </div>
-              </div>
 
             </div>
             <DialogFooter className="flex flex-row justify-between w-full">

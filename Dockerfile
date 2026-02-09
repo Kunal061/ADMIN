@@ -1,29 +1,26 @@
-# Use Node.js 20 as base image (required for Vite 7.x)
-FROM node:20-alpine
+# Build stage
+FROM node:20-slim AS build
 
-# Set working directory
 WORKDIR /app
 
-# Copy package files first for better caching
+# Copy package files and install dependencies
 COPY package*.json ./
-COPY backend/package*.json ./backend/
-
-# Install frontend dependencies
 RUN npm install
 
-# Install backend dependencies
-WORKDIR /app/backend
-RUN npm install
-
-# Copy the entire project
-WORKDIR /app
+# Copy source and config files
 COPY . .
 
-# Make the start scripts executable
-RUN chmod +x /app/start.sh /app/start-docker.sh
+# Build the application
+RUN npm run build
 
-# Expose ports
-EXPOSE 3000 5173
+# Production stage
+FROM nginx:alpine
 
-# Run the Docker start script
-CMD ["/bin/sh", "/app/start-docker.sh"]
+# Copy built assets from the build stage
+COPY --from=build /app/dist /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start Nginx
+CMD ["nginx", "-g", "daemon off;"]
