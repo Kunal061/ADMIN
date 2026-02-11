@@ -749,6 +749,10 @@ export function TripPage() {
   const handleCreateTripStepContinue = async () => {
     if (createTripStep !== 1) {
       if (createTripStep === 2) {
+        if (!newTrip.coverImage) {
+          showToast('Please upload a cover photo to continue.', 'error');
+          return;
+        }
         if (API_BASE_URL && createCoverFile) {
           if (!createTripId) {
             showToast('Please complete step 1 before uploading a cover image.', 'error');
@@ -775,7 +779,18 @@ export function TripPage() {
         }
       }
 
-      setCreateTripStep((step) => Math.min(3, step + 1));
+      if (createTripStep === 3) {
+        if (!newTrip.description?.trim()) {
+          showToast('Please enter a summary to continue.', 'error');
+          return;
+        }
+        if (!newTrip.overviewNotes?.trim()) {
+          showToast('Please enter notes to continue.', 'error');
+          return;
+        }
+      }
+
+      setCreateTripStep((step) => Math.min(4, step + 1));
       return;
     }
 
@@ -835,7 +850,7 @@ export function TripPage() {
       }
     }
 
-    setCreateTripStep((step) => Math.min(3, step + 1));
+    setCreateTripStep((step) => Math.min(4, step + 1));
   };
 
 
@@ -1127,7 +1142,7 @@ export function TripPage() {
               </DialogDescription>
             </DialogHeader>
             <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>Step {createTripStep} of 3</span>
+              <span>Step {createTripStep} of 4</span>
             </div>
 
             {createTripStep === 1 && (
@@ -1219,26 +1234,6 @@ export function TripPage() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="overview-type">Overview Type</Label>
-                    <Input
-                      id="overview-type"
-                      value={newTrip.overviewType}
-                      onChange={(e) => setNewTrip(prev => ({ ...prev, overviewType: e.target.value }))}
-                      placeholder="e.g., adventure"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="overview-notes">Overview Notes</Label>
-                    <Input
-                      id="overview-notes"
-                      value={newTrip.overviewNotes}
-                      onChange={(e) => setNewTrip(prev => ({ ...prev, overviewNotes: e.target.value }))}
-                      placeholder="Visa info, tips, etc."
-                    />
-                  </div>
-                </div>
 
                 {/* Participants */}
                 <div className="space-y-2 pt-4 border-t">
@@ -1313,7 +1308,7 @@ export function TripPage() {
                 />
                 <div className="flex items-center justify-center">
                   <div className="w-full max-w-md">
-                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-[#A9C6F4] flex items-center justify-center shadow-sm">
+                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-gray-200/50 flex items-center justify-center shadow-sm">
                       {newTrip.coverImage ? (
                         <img
                           src={newTrip.coverImage}
@@ -1321,9 +1316,11 @@ export function TripPage() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-white text-7xl font-semibold">
-                          {(newTrip.title?.trim()?.charAt(0) || 'A').toUpperCase()}
-                        </span>
+                        <img
+                          src="/gallery-icon.png"
+                          alt="Upload cover photo"
+                          className="h-24 w-24 object-contain opacity-60"
+                        />
                       )}
                     </div>
                     <div className="mt-5 flex items-center justify-center gap-3">
@@ -1353,6 +1350,45 @@ export function TripPage() {
             )}
 
             {createTripStep === 3 && (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Overview Name</Label>
+                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {newTrip.title.trim() || '—'}
+                  </div>
+                  <p className="text-xs text-gray-500">Read-only (from Trip Title)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Overview Type</Label>
+                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {newTrip.destination?.trim() || 'adventure'}
+                  </div>
+                  <p className="text-xs text-gray-500">Read-only (derived from Destination)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="overview-summary">Summary <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    id="overview-summary"
+                    value={newTrip.description}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Describe the trip..."
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="overview-notes">Notes <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    id="overview-notes"
+                    value={newTrip.overviewNotes}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, overviewNotes: e.target.value }))}
+                    placeholder="Visa info, tips, etc."
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+
+            {createTripStep === 4 && (
               <div className="space-y-4 py-4">
                 {/* Itinerary Section */}
                 <div className="space-y-4">
@@ -1554,11 +1590,11 @@ export function TripPage() {
                   Back
                 </Button>
               )}
-              {createTripStep < 3 ? (
+              {createTripStep < 4 ? (
                 <Button
                   type="button"
                   onClick={handleCreateTripStepContinue}
-                  disabled={createTripStepLoading || createCoverUploadLoading}
+                  disabled={createTripStepLoading || createCoverUploadLoading || (createTripStep === 2 && !newTrip.coverImage) || (createTripStep === 3 && (!newTrip.description?.trim() || !newTrip.overviewNotes?.trim()))}
                   className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
                   style={{ backgroundColor: '#06B3C4' }}
                 >
@@ -2091,7 +2127,7 @@ export function TripPage() {
               <DialogTitle className="font-heading">Edit Trip</DialogTitle>
             </DialogHeader>
             <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>Step {editTripStep} of 3</span>
+              <span>Step {editTripStep} of 4</span>
             </div>
 
             {editTripStep === 1 && (
@@ -2170,27 +2206,6 @@ export function TripPage() {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-overview-type">Overview Type</Label>
-                    <Input
-                      id="edit-overview-type"
-                      value={editingTrip.overviewType ?? ''}
-                      onChange={(e) => setEditingTrip({ ...editingTrip, overviewType: e.target.value })}
-                      placeholder="e.g., adventure"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="edit-overview-notes">Overview Notes</Label>
-                    <Input
-                      id="edit-overview-notes"
-                      value={editingTrip.overviewNotes ?? ''}
-                      onChange={(e) => setEditingTrip({ ...editingTrip, overviewNotes: e.target.value })}
-                      placeholder="Visa info, tips, etc."
-                    />
-                  </div>
-                </div>
-
                 {/* Participants */}
                 <div className="space-y-2 pt-4 border-t">
                   <Label className="text-base font-semibold">Participants</Label>
@@ -2268,7 +2283,7 @@ export function TripPage() {
                 />
                 <div className="flex items-center justify-center">
                   <div className="w-full max-w-md">
-                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-[#A9C6F4] flex items-center justify-center shadow-sm">
+                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-gray-200/50 flex items-center justify-center shadow-sm">
                       {editingTrip.coverImage ? (
                         <img
                           src={editingTrip.coverImage}
@@ -2276,9 +2291,11 @@ export function TripPage() {
                           className="h-full w-full object-cover"
                         />
                       ) : (
-                        <span className="text-white text-7xl font-semibold">
-                          {(editingTrip.title?.trim()?.charAt(0) || 'A').toUpperCase()}
-                        </span>
+                        <img
+                          src="/gallery-icon.png"
+                          alt="Upload cover photo"
+                          className="h-24 w-24 object-contain opacity-60"
+                        />
                       )}
                     </div>
                     <div className="mt-5 flex items-center justify-center gap-3">
@@ -2311,6 +2328,45 @@ export function TripPage() {
             )}
 
             {editTripStep === 3 && (
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Overview Name</Label>
+                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {editingTrip.title?.trim() || '—'}
+                  </div>
+                  <p className="text-xs text-gray-500">Read-only (from Trip Title)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Overview Type</Label>
+                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                    {(editingTrip.overviewType ?? '').trim() || editingTrip.destination?.trim() || 'adventure'}
+                  </div>
+                  <p className="text-xs text-gray-500">Read-only (derived)</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-overview-summary">Summary <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    id="edit-overview-summary"
+                    value={editingTrip.description ?? ''}
+                    onChange={(e) => setEditingTrip({ ...editingTrip, description: e.target.value })}
+                    placeholder="Describe the trip..."
+                    rows={4}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-overview-notes">Notes <span className="text-red-500">*</span></Label>
+                  <Textarea
+                    id="edit-overview-notes"
+                    value={editingTrip.overviewNotes ?? ''}
+                    onChange={(e) => setEditingTrip({ ...editingTrip, overviewNotes: e.target.value })}
+                    placeholder="Visa info, tips, etc."
+                    rows={3}
+                  />
+                </div>
+              </div>
+            )}
+
+            {editTripStep === 4 && (
               <div className="space-y-4 py-4">
                 {/* Edit Itinerary Section */}
                 <div className="space-y-4">
@@ -2514,10 +2570,11 @@ export function TripPage() {
                   Back
                 </Button>
               )}
-              {editTripStep < 3 ? (
+              {editTripStep < 4 ? (
                 <Button
                   type="button"
-                  onClick={() => setEditTripStep((step) => Math.min(3, step + 1))}
+                  onClick={() => setEditTripStep((step) => Math.min(4, step + 1))}
+                  disabled={(editTripStep === 2 && !editingTrip?.coverImage) || (editTripStep === 3 && (!editingTrip?.description?.trim() || !editingTrip?.overviewNotes?.trim()))}
                   className="text-white hover:opacity-90 border-0 font-medium"
                   style={{ backgroundColor: '#06B3C4' }}
                 >
