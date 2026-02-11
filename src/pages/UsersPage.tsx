@@ -46,7 +46,8 @@ export function UsersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [manageUserId, setManageUserId] = useState('');
-  const [manageName, setManageName] = useState('');
+  const [manageFirstName, setManageFirstName] = useState('');
+  const [manageLastName, setManageLastName] = useState('');
   const [manageEmail, setManageEmail] = useState('');
   const [managePhone, setManagePhone] = useState('');
   const [manageDobDay, setManageDobDay] = useState('');
@@ -378,21 +379,22 @@ export function UsersPage() {
   };
 
   const resetManageDialog = () => {
-    setManageDialogOpen(false);
-    setManageUserId('');
-    setManageName('');
-    setManageEmail('');
-    setManagePhone('');
-    setManageDobDay('');
-    setManageDobMonth('');
-    setManageDobYear('');
-    setManageGender('');
-    setManageEmergencyName('');
-    setManageEmergencyRelationship('');
-    setManageEmergencyContactNo('');
-    setManageEmergencyEmail('');
-    setManageSelectedMoodIds([]);
-    setManageSelectedStyleIds([]);
+  setManageDialogOpen(false);
+  setManageUserId('');
+  setManageFirstName('');
+  setManageLastName('');
+  setManageEmail('');
+  setManagePhone('');
+  setManageDobDay('');
+  setManageDobMonth('');
+  setManageDobYear('');
+  setManageGender('');
+  setManageEmergencyName('');
+  setManageEmergencyRelationship('');
+  setManageEmergencyContactNo('');
+  setManageEmergencyEmail('');
+  setManageSelectedMoodIds([]);
+  setManageSelectedStyleIds([]);
   };
 
   const handleSaveUser = async () => {
@@ -400,10 +402,8 @@ export function UsersPage() {
       resetManageDialog();
       return;
     }
-    const trimmedName = manageName.trim();
-    const nameParts = trimmedName.split(' ').filter(Boolean);
-    const firstName = nameParts.shift() || '';
-    const lastName = nameParts.join(' ');
+  const trimmedFirstName = manageFirstName.trim();
+  const trimmedLastName = manageLastName.trim();
     const dateOfBirth = manageDobYear && manageDobMonth && manageDobDay
       ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
       : undefined;
@@ -424,11 +424,13 @@ export function UsersPage() {
       mood: manageSelectedMoodIds,
       style: manageSelectedStyleIds,
     };
-    if (trimmedName) {
-      payload.firstName = firstName || trimmedName;
-      payload.lastName = lastName || undefined;
-      updateData.firstName = firstName || trimmedName;
-      updateData.lastName = lastName || undefined;
+    if (trimmedFirstName) {
+      payload.firstName = trimmedFirstName;
+      updateData.firstName = trimmedFirstName;
+    }
+    if (trimmedLastName) {
+      payload.lastName = trimmedLastName;
+      updateData.lastName = trimmedLastName;
     }
     if (dateOfBirth) {
       payload.dob = dateOfBirth;
@@ -954,7 +956,8 @@ export function UsersPage() {
                             size="sm"
                             onClick={() => {
                               setManageUserId(user.id);
-                              setManageName([user.firstName, user.lastName].filter(Boolean).join(' '));
+                              setManageFirstName(user.firstName || '');
+                              setManageLastName(user.lastName || '');
                               setManageEmail(user.email);
                               setManagePhone(user.phone ?? '');
                               const dob = user.dateOfBirth ?? '';
@@ -1077,7 +1080,8 @@ export function UsersPage() {
           setManageDialogOpen(open);
           if (!open) {
             setManageUserId('');
-            setManageName('');
+            setManageFirstName('');
+            setManageLastName('');
             setManageEmail('');
             setManagePhone('');
             setManageDobDay('');
@@ -1102,13 +1106,23 @@ export function UsersPage() {
           </DialogHeader>
           <div className="space-y-3 py-1">
             <div className="space-y-1">
-              <Label htmlFor="manage-name">Name</Label>
+              <Label htmlFor="manage-first-name">First Name</Label>
               <Input
-                id="manage-name"
+                id="manage-first-name"
                 type="text"
-                placeholder="Enter full name"
-                value={manageName}
-                onChange={(e) => setManageName(e.target.value)}
+                placeholder="Enter first name"
+                value={manageFirstName}
+                onChange={(e) => setManageFirstName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="manage-last-name">Last Name</Label>
+              <Input
+                id="manage-last-name"
+                type="text"
+                placeholder="Enter last name"
+                value={manageLastName}
+                onChange={(e) => setManageLastName(e.target.value)}
               />
             </div>
             <div className="space-y-1">
