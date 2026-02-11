@@ -1326,10 +1326,20 @@ export function UsersPage() {
                             );
                           }}
                           className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
-                          style={{
-                            backgroundColor: selected ? '#06B3C4' : '#FFFFFF',
-                            borderColor: '#06B3C4',
-                          }}
+                          style={selected
+                            ? {
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'solid',
+                                borderWidth: '1px',
+                              }
+                            : {
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
+                          }
                         >
                           {mood.icon ? (
                             <img
@@ -1377,10 +1387,20 @@ export function UsersPage() {
                             );
                           }}
                           className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
-                          style={{
-                            backgroundColor: selected ? '#06B3C4' : '#FFFFFF',
-                            borderColor: '#06B3C4',
-                          }}
+                          style={selected
+                            ? {
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'solid',
+                                borderWidth: '1px',
+                              }
+                            : {
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
+                          }
                         >
                           {style.icon ? (
                             <img
