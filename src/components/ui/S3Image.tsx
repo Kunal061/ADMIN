@@ -44,7 +44,7 @@ export function S3Image({ src, alt, className, onError }: S3ImageProps) {
                         setSvgContent(text);
                     }
                 })
-                .catch(err => {
+                .catch(() => {
                     // console.error('Failed to fetch SVG', err);
                 });
         }
