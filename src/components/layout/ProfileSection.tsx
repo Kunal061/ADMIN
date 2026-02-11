@@ -250,8 +250,6 @@ export function ProfileSection() {
                       </>
                     )}
                   </Button>
-                  {(firstName.trim() || lastName.trim()) &&
-                    )
                 </div>
               </div>
             </div>

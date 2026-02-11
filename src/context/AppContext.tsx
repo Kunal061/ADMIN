@@ -7,6 +7,7 @@ import { tokenStorageKey } from '@/lib/apiClient';
 interface AppContextType {
   // Auth
   auth: AuthState;
+  isInitializing: boolean;
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => void;
 
@@ -85,6 +86,7 @@ function mergeMoods(defaults: MoodOption[], userMoods: MoodOption[] | undefined)
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: ReactNode }) {
+  const [isInitializing, setIsInitializing] = useState<boolean>(true);
   const [auth, setAuth] = useState<AuthState>({
     isAuthenticated: false,
     user: null,
@@ -115,8 +117,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Load last active user on mount
   useEffect(() => {
+    // Check if there's a valid token in localStorage
+    const token = localStorage.getItem(tokenStorageKey);
     const lastUserEmail = storage.getLastActiveUser();
-    if (lastUserEmail) {
+
+    if (token && lastUserEmail) {
+      // Token exists, restore the session
       const userData = storage.loadUserData(lastUserEmail);
       if (userData) {
         const mergedStyles = mergeStyles(defaultStyles, Array.isArray(userData.styles) ? userData.styles : undefined);
@@ -131,7 +137,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setStyles(mergedStyles);
         setMoods(mergedMoods);
       }
+    } else {
+      // No token or no last user, clear everything
+      setAuth({
+        isAuthenticated: false,
+        user: null,
+      });
+      if (!token && lastUserEmail) {
+        // Token expired but user data exists, clear the last user
+        storage.setLastActiveUser(null);
+      }
     }
+    // Mark initialization as complete
+    setIsInitializing(false);
   }, []);
 
   // Persist changes whenever relevant state changes, BUT only if authenticated
@@ -169,12 +187,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     console.log('🔐 Attempting login for:', email);
-    
+
     const result = await loginWithCredentials(email, password);
-    
+
     if (result.success && result.user) {
       console.log('✅ Login successful via API');
-      
+
       const userData = {
         id: result.user.id || result.user._id || result.user.cognitoId || '1',
         name: result.user.fullName || `${result.user.firstName || ''} ${result.user.lastName || ''}`.trim(),
@@ -182,12 +200,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         profilePhoto: result.user.profilePicture || null,
         emergencyContact: result.user.mobileNo || '',
       };
-      
+
       // Load or create user data in localStorage (for trips, styles, moods)
       const storedData = storage.loadUserData(userData.email);
       const mergedStyles = mergeStyles(defaultStyles, Array.isArray(storedData.styles) ? storedData.styles : undefined);
       const mergedMoods = mergeMoods(defaultMoods, Array.isArray(storedData.moods) ? storedData.moods : undefined);
-      
+
       // Update stored user with latest data from API
       storage.saveUserData(userData.email, {
         user: userData,
@@ -195,7 +213,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         styles: mergedStyles,
         moods: mergedMoods,
       });
-      
+
       setAuth({ isAuthenticated: true, user: userData });
       setCurrentUser(userData);
       setTrips(storedData.trips);
@@ -209,12 +227,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           console.error('Failed to persist API token', e);
         }
       }
-      
+
       storage.setLastActiveUser(userData.email);
       showToast('Welcome back!', 'success');
       return true;
     }
-    
+
     console.log('❌ Login failed:', result.message);
     return false;
   };
@@ -413,14 +431,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const toggleMood = (id: string) => {
-    setMoods(prev =>
-      {
-        const next = prev.map(mood =>
-          mood.id === id ? { ...mood, isActive: !mood.isActive } : mood
-        );
-        persistUserData({ moods: next });
-        return next;
-      }
+    setMoods(prev => {
+      const next = prev.map(mood =>
+        mood.id === id ? { ...mood, isActive: !mood.isActive } : mood
+      );
+      persistUserData({ moods: next });
+      return next;
+    }
     );
   };
 
@@ -493,6 +510,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     <AppContext.Provider
       value={{
         auth,
+        isInitializing,
         login,
         logout,
         currentUser,
@@ -505,7 +523,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         addItinerary,
         addActivity,
         refreshTripsFromStorage,
-  setTripsFromApi,
+        setTripsFromApi,
         styles,
         addStyle,
         updateStyle,

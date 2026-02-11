@@ -471,29 +471,12 @@ export function MoodPage() {
                     <div className="shrink-0 flex items-center gap-3">
                       {mood.image && !failedIconIds.has(mood.id) ? (
                         <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
-                          {isSvgUrl(mood.image) ? (
-                            <object
-                              data={mood.image}
-                              type="image/svg+xml"
-                              className="w-full h-full object-contain"
-                            >
-                              <img
-                                src={mood.image}
-                                alt={mood.name}
-                                className="w-full h-full object-contain"
-                                referrerPolicy="no-referrer"
-                                onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
-                              />
-                            </object>
-                          ) : (
-                            <img
-                              src={mood.image}
-                              alt={mood.name}
-                              className="w-full h-full object-contain"
-                              referrerPolicy="no-referrer"
-                              onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
-                            />
-                          )}
+                          <img
+                            src={mood.image}
+                            alt={mood.name}
+                            className="w-full h-full object-contain"
+                            onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
+                          />
                         </div>
                       ) : (
                         <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
@@ -559,29 +542,12 @@ export function MoodPage() {
                           <td className="w-[20%] py-4 px-6 text-left">
                             {mood.image && !failedIconIds.has(mood.id) ? (
                               <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
-                                {isSvgUrl(mood.image) ? (
-                                  <object
-                                    data={mood.image}
-                                    type="image/svg+xml"
-                                    className="w-full h-full object-contain"
-                                  >
-                                    <img
-                                      src={mood.image}
-                                      alt={mood.name}
-                                      className="w-full h-full object-contain"
-                                      referrerPolicy="no-referrer"
-                                      onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
-                                    />
-                                  </object>
-                                ) : (
-                                  <img
-                                    src={mood.image}
-                                    alt={mood.name}
-                                    className="w-full h-full object-contain"
-                                    referrerPolicy="no-referrer"
-                                    onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
-                                  />
-                                )}
+                                <img
+                                  src={mood.image}
+                                  alt={mood.name}
+                                  className="w-full h-full object-contain"
+                                  onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
+                                />
                               </div>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
@@ -765,27 +731,11 @@ export function MoodPage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {manageMoodIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm flex items-center justify-center">
-                      {isSvgUrl(manageMoodIconPreview) ? (
-                        <object
-                          data={manageMoodIconPreview}
-                          type="image/svg+xml"
-                          className="w-full h-full object-contain"
-                        >
-                          <img
-                            src={manageMoodIconPreview}
-                            alt="Mood icon preview"
-                            className="w-full h-full object-contain"
-                            referrerPolicy="no-referrer"
-                          />
-                        </object>
-                      ) : (
-                        <img
-                          src={manageMoodIconPreview}
-                          alt="Mood icon preview"
-                          className="w-full h-full object-contain"
-                          referrerPolicy="no-referrer"
-                        />
-                      )}
+                      <img
+                        src={manageMoodIconPreview}
+                        alt="Mood icon preview"
+                        className="w-full h-full object-contain"
+                      />
                     </div>
                   ) : (
                     <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
