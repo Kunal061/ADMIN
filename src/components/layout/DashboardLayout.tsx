@@ -6,6 +6,7 @@ import { Toast } from '@/components/ui/Toast';
 import { Sidebar } from './Sidebar';
 import { ProfileSection } from './ProfileSection';
 import { useApp } from '@/context/AppContext';
+import { cn } from '@/lib/utils';
 
 const PAGE_TITLES: Record<string, string> = {
   '/users': 'Users Management',
@@ -33,32 +34,35 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
       />
       {/* White header: logo + page title (left); profile (right); mobile menu button left of logo */}
       <header
-        className="w-full flex flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4 lg:px-6 lg:py-1 shrink-0 relative z-20 bg-white border-b border-gray-200"
+        className={cn(
+          "w-full flex flex-row items-center justify-between gap-2 px-3 py-2 sm:gap-4 lg:px-6 lg:py-1 shrink-0 relative bg-white border-b border-gray-200",
+          sidebarOpen ? "z-10 lg:z-20" : "z-20"
+        )}
       >
-        <div className="w-full flex items-center justify-between gap-2 sm:w-auto sm:justify-start sm:ml-6 ml-0">
+        <div className="flex items-center gap-2 sm:ml-2 lg:ml-0 shrink-0 min-w-0">
           <Button
             variant="ghost"
             size="icon"
-            className="lg:hidden text-white hover:opacity-90"
+            className="lg:hidden text-white hover:opacity-90 shrink-0"
             style={{ backgroundColor: '#06B3C4' }}
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => setSidebarOpen((prev) => !prev)}
           >
             <Menu className="h-5 w-5" />
           </Button>
           <img
             src="/roamana-logo.png"
             alt="Roamana"
-            className="h-16 w-auto max-w-60 object-contain ml-2"
+            className="h-10 sm:h-14 lg:h-16 w-auto max-w-[120px] sm:max-w-48 lg:max-w-60 object-contain"
           />
         </div>
         {pageTitle && (
-          <div className="ml-0 lg:ml-29 shrink-0">
-            <h1 className="text-xl font-semibold text-gray-900 font-heading hidden sm:block">
+          <div className="hidden lg:block shrink-0 flex-1 lg:flex-initial lg:ml-4">
+            <h1 className="text-xl font-semibold text-gray-900 font-heading">
               {pageTitle}
             </h1>
           </div>
         )}
-        <div className="w-full flex justify-end sm:w-auto sm:ml-auto shrink-0">
+        <div className="flex justify-end shrink-0">
           <ProfileSection />
         </div>
       </header>

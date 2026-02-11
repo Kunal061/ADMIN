@@ -241,15 +241,15 @@ export function MoodPage() {
   return (
     <div className="space-y-5 font-sans">
       {/* Search Box + Add Mood */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="relative flex-1">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
             placeholder="Search moods by name..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="pl-10 pr-4 w-full rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
         <Dialog
@@ -265,7 +265,7 @@ export function MoodPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button className="text-white hover:opacity-90 border-0 font-medium px-5 py-2 rounded-full shadow-md" style={{ backgroundColor: '#06B3C4' }}>
+            <Button className="w-full lg:w-auto text-white hover:opacity-90 border-0 font-medium px-5 py-2 rounded-full shadow-md" style={{ backgroundColor: '#06B3C4' }}>
               <Plus className="h-4 w-4 mr-2" />
               Add Mood
             </Button>
@@ -412,7 +412,60 @@ export function MoodPage() {
               </p>
             </div>
           ) : (
-          <div className="overflow-x-auto">
+          <>
+          {/* Mobile: card list */}
+          <div className="lg:hidden space-y-3 p-4">
+            {paginatedMoods.map((mood) => (
+              <div
+                key={mood.id}
+                className="flex items-center gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
+                style={{ borderColor: '#EEF0F1' }}
+              >
+                <div className="shrink-0 flex items-center gap-3">
+                  {mood.image ? (
+                    <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white">
+                      <img
+                        src={mood.image}
+                        alt={mood.name}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-xs">—</span>
+                    </div>
+                  )}
+                  <div
+                    className="w-8 h-8 rounded border border-gray-300 shrink-0"
+                    style={{ backgroundColor: mood.color || '#000000' }}
+                    title={mood.color || '#000000'}
+                  />
+                </div>
+                <div className="flex-1 min-w-0 font-medium text-gray-900">{mood.name}</div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    onClick={() => handleOpenManageDialog(mood)}
+                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <Edit className="h-4 w-4 text-white" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
+                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <Trash2 className="h-4 w-4 text-white" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full table-fixed">
               <thead>
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
@@ -482,9 +535,10 @@ export function MoodPage() {
                 })}
               </tbody>
             </table>
+          </div>
             
-            {/* Pagination Controls */}
-            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
+          {/* Pagination Controls */}
+          <div className="px-6 py-4 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F1' }}>
               <div className="text-sm text-gray-600">
                 Showing {startIndex + 1} to {Math.min(endIndex, filteredMoods.length)} of {filteredMoods.length} moods
               </div>
@@ -545,7 +599,7 @@ export function MoodPage() {
                 </Button>
               </div>
             </div>
-          </div>
+          </>
           );
         })()}
       </div>

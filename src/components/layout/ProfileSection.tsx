@@ -134,16 +134,16 @@ export function ProfileSection() {
         <button
           type="button"
           onClick={() => setDropdownOpen((prev) => !prev)}
-          className="flex items-center gap-3 px-4 py-3 rounded-lg cursor-pointer transition-opacity hover:opacity-90 w-auto shrink-0 text-left border-0"
+          className="flex items-center gap-3 px-2 py-2 md:px-4 md:py-3 rounded-lg cursor-pointer transition-opacity hover:opacity-90 w-auto shrink-0 text-left border-0"
           style={{ backgroundColor: '#06B3C4' }}
         >
-          <Avatar className="h-10 w-10 shrink-0 border-2 border-white">
+          <Avatar className="h-9 w-9 md:h-10 md:w-10 shrink-0 border-2 border-white">
             <AvatarImage src={currentUser.profilePhoto || ''} />
             <AvatarFallback style={{ backgroundColor: '#06B3C4', color: '#FFFFFF' }}>
               {currentUser.name.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0 max-w-[180px]">
+          <div className="flex-1 min-w-0 max-w-[180px] hidden md:block">
             <p className="text-sm font-medium text-white truncate">
               {currentUser.name}
             </p>
@@ -154,7 +154,7 @@ export function ProfileSection() {
         </button>
         {dropdownOpen && (
           <div
-            className="profile-dropdown-panel absolute left-0 right-0 top-full mt-0 w-full rounded-t-none rounded-b-lg border border-gray-200 shadow-lg z-50 py-1"
+            className="profile-dropdown-panel absolute left-auto right-0 top-full mt-1 min-w-[180px] w-max max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 shadow-lg z-[9999] py-1 md:rounded-t-none md:rounded-b-lg"
             style={{ backgroundColor: '#ffffff' }}
           >
             <button

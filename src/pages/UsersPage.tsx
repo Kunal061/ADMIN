@@ -16,6 +16,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { apiClient, getApiBaseUrl } from '@/lib/apiClient';
+import { PhoneInput } from '@/components/PhoneInput';
 
 export function UsersPage() {
   const { showToast } = useApp();
@@ -487,8 +488,8 @@ export function UsersPage() {
       )}
 
       {/* Search Box + Add User */}
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:flex-1">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="relative w-full flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
@@ -524,7 +525,7 @@ export function UsersPage() {
         }}>
           <DialogTrigger asChild>
             <Button
-              className="h-10 px-5 py-2.5 text-sm font-medium rounded-full shadow-md text-white [&_svg]:text-white hover:opacity-90"
+              className="w-full lg:w-auto h-10 px-5 py-2.5 text-sm font-medium rounded-full shadow-md text-white [&_svg]:text-white hover:opacity-90"
               style={{ backgroundColor: '#06B3C4' }}
             >
               <UserPlus className="h-4 w-4 mr-2" />
@@ -571,12 +572,11 @@ export function UsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-phone">Phone Number</Label>
-                <Input
+                <PhoneInput
                   id="user-phone"
-                  type="tel"
-                  placeholder="Enter your Phone Number"
                   value={newPhone}
-                  onChange={(e) => setNewPhone(e.target.value)}
+                  onChange={setNewPhone}
+                  placeholder="Enter your Phone Number"
                 />
               </div>
               <div className="space-y-2">
@@ -790,12 +790,11 @@ export function UsersPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
-                  <Input
+                  <PhoneInput
                     id="emergency-contact"
-                    type="tel"
-                    placeholder="Contact number"
                     value={newEmergencyContactNo}
-                    onChange={(e) => setNewEmergencyContactNo(e.target.value)}
+                    onChange={setNewEmergencyContactNo}
+                    placeholder="Contact number"
                   />
                 </div>
                 <div className="space-y-2">
@@ -901,7 +900,76 @@ export function UsersPage() {
             </div>
           ) : (
           <>
-          <div className="overflow-x-auto font-sans">
+          {/* Mobile: card list */}
+          <div className="lg:hidden space-y-3 p-4">
+            {paginatedUsers.map((user) => {
+              const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+              return (
+                <div
+                  key={user.id}
+                  className="flex flex-col gap-2 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
+                  style={{ borderColor: '#EEF0F1' }}
+                >
+                  <div className="font-medium text-gray-900">{displayName || '—'}</div>
+                  <div className="text-sm text-gray-600">{user.email}</div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                    {user.phone && <span>Phone: {user.phone}</span>}
+                    {user.dateOfBirth && <span>DOB: {formatDateOfBirth(user.dateOfBirth)}</span>}
+                    {user.gender && <span>{user.gender}</span>}
+                  </div>
+                  <div className="flex items-center gap-1.5 justify-end pt-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => {
+                        setManageUserId(user.id);
+                        setManageFirstName(user.firstName || '');
+                        setManageLastName(user.lastName || '');
+                        setManageEmail(user.email);
+                        setManagePhone(user.phone ?? '');
+                        const dob = user.dateOfBirth ?? '';
+                        if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+                          const [y, m, d] = dob.split('-');
+                          setManageDobYear(y);
+                          setManageDobMonth(m);
+                          setManageDobDay(d.replace(/^0+/, '') || d);
+                        } else {
+                          setManageDobDay('');
+                          setManageDobMonth('');
+                          setManageDobYear('');
+                        }
+                        setManageGender(user.gender ?? '');
+                        const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
+                        setManageEmergencyName(emergency.contactName ?? '');
+                        setManageEmergencyRelationship(emergency.relationship ?? '');
+                        setManageEmergencyContactNo(emergency.contactNo ?? '');
+                        setManageEmergencyEmail(emergency.email ?? '');
+                        setManageSelectedMoodIds(user.mood ?? []);
+                        setManageSelectedStyleIds(user.style ?? []);
+                        setManageDialogOpen(true);
+                      }}
+                      className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <Edit className="h-4 w-4 text-white" />
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => handleRequestDelete(user.id, displayName)}
+                      className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <Trash2 className="h-4 w-4 text-white" />
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop: table */}
+          <div className="hidden lg:block overflow-x-auto font-sans">
             <table className="w-full font-sans">
               <thead>
                 <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
@@ -1314,12 +1382,11 @@ export function UsersPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="manage-emergency-contact">Emergency Contact Number</Label>
-                <Input
+                <PhoneInput
                   id="manage-emergency-contact"
-                  type="tel"
-                  placeholder="Contact number"
                   value={manageEmergencyContactNo}
-                  onChange={(e) => setManageEmergencyContactNo(e.target.value)}
+                  onChange={setManageEmergencyContactNo}
+                  placeholder="Contact number"
                 />
               </div>
               <div className="space-y-2">

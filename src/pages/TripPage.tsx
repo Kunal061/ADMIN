@@ -1579,15 +1579,15 @@ export function TripPage() {
         </Dialog>
 
       {/* Search Box + Add New */}
-      <div className="mb-4 flex items-center justify-between gap-4">
-        <div className="relative flex-1">
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
+        <div className="relative flex-1 w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5" style={{ color: '#06B3C4' }} />
           <Input
             type="text"
             placeholder="Search trips by title or destination..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="pl-10 pr-4 w-full rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
         <Dialog
@@ -1600,7 +1600,7 @@ export function TripPage() {
           }}
         >
           <DialogTrigger asChild>
-            <Button className="text-white hover:opacity-90 border-0 font-medium px-5 py-2 rounded-full shadow-md" style={{ backgroundColor: '#06B3C4' }}>
+            <Button className="w-full lg:w-auto text-white hover:opacity-90 border-0 font-medium px-5 py-2 rounded-full shadow-md" style={{ backgroundColor: '#06B3C4' }}>
               <Plus className="h-4 w-4 mr-2" />
               Add New
             </Button>
@@ -1634,93 +1634,157 @@ export function TripPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Title</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Start Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">End Date</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Type</th>
-                    <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Cover Image</th>
-                    <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {paginatedTrips.map((trip) => (
-                  <tr key={trip.id} className="border-b hover:bg-gray-50 transition-colors" style={{ borderColor: '#EEF0F1' }}>
-                    <td className="py-3 px-4">
-                      <div className="font-medium text-gray-900">
-                        {trip.title}
+            <>
+              {/* Mobile: card list */}
+              <div className="lg:hidden space-y-3 p-4">
+                {paginatedTrips.map((trip) => (
+                  <div
+                    key={trip.id}
+                    className="flex gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: '#EEF0F1' }}
+                  >
+                    <div className="shrink-0 w-16 h-16 rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
+                      {trip.coverImage ? (
+                        <img
+                          src={trip.coverImage}
+                          alt={trip.title}
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <MapPin className="h-8 w-8 text-gray-400" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 truncate">{trip.title}</div>
+                      <div className="text-xs text-gray-600 mt-0.5">
+                        {new Date(trip.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                        {' - '}
+                        {new Date(trip.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                       </div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm text-gray-700">
-                        {new Date(trip.startDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          year: 'numeric' 
-                        })}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className="text-sm text-gray-700">
-                        {new Date(trip.endDate).toLocaleDateString('en-US', { 
-                          month: 'short', 
-                          day: 'numeric', 
-                          year: 'numeric' 
-                        })}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
-                        trip.type === 'private' 
-                          ? 'bg-purple-100 text-purple-800' 
+                      <span className={`inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                        trip.type === 'private'
+                          ? 'bg-purple-100 text-purple-800'
                           : trip.type === 'invite-only'
                           ? 'bg-orange-100 text-orange-800'
                           : 'bg-green-100 text-green-800'
                       }`}>
                         {trip.type || 'public'}
                       </span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {trip.coverImage ? (
-                        <img
-                          src={trip.coverImage}
-                          alt={trip.title}
-                          className="w-14 h-10 object-cover rounded"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none';
-                            const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                            if (fallback) fallback.style.display = 'inline';
-                          }}
-                        />
-                      ) : null}
-                    </td>
-                    <td className="py-3 px-6">
-                      <div className="flex items-center gap-1.5 justify-end">
-                        <Button
-                          size="sm"
-                          onClick={() => handleEditTrip(trip)}
-                          className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          <Edit className="h-4 w-4 text-white" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => handleRequestDeleteTrip(trip)}
-                          className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                          style={{ backgroundColor: '#06B3C4' }}
-                        >
-                          <Trash2 className="h-4 w-4 text-white" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                  ))}
-                </tbody>
-              </table>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        onClick={() => handleEditTrip(trip)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Edit className="h-4 w-4 text-white" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleRequestDeleteTrip(trip)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Trash2 className="h-4 w-4 text-white" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Title</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Start Date</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">End Date</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Type</th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Cover Image</th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedTrips.map((trip) => (
+                    <tr key={trip.id} className="border-b hover:bg-gray-50 transition-colors" style={{ borderColor: '#EEF0F1' }}>
+                      <td className="py-3 px-4">
+                        <div className="font-medium text-gray-900">
+                          {trip.title}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-sm text-gray-700">
+                          {new Date(trip.startDate).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          })}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="text-sm text-gray-700">
+                          {new Date(trip.endDate).toLocaleDateString('en-US', { 
+                            month: 'short', 
+                            day: 'numeric', 
+                            year: 'numeric' 
+                          })}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                          trip.type === 'private' 
+                            ? 'bg-purple-100 text-purple-800' 
+                            : trip.type === 'invite-only'
+                            ? 'bg-orange-100 text-orange-800'
+                            : 'bg-green-100 text-green-800'
+                        }`}>
+                          {trip.type || 'public'}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        {trip.coverImage ? (
+                          <img
+                            src={trip.coverImage}
+                            alt={trip.title}
+                            className="w-14 h-10 object-cover rounded"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                              if (fallback) fallback.style.display = 'inline';
+                            }}
+                          />
+                        ) : null}
+                      </td>
+                      <td className="py-3 px-6">
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <Button
+                            size="sm"
+                            onClick={() => handleEditTrip(trip)}
+                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                            style={{ backgroundColor: '#06B3C4' }}
+                          >
+                            <Edit className="h-4 w-4 text-white" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => handleRequestDeleteTrip(trip)}
+                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                            style={{ backgroundColor: '#06B3C4' }}
+                          >
+                            <Trash2 className="h-4 w-4 text-white" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {totalPages > 1 && (
                 <div
                   className="px-4 py-3 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
@@ -1778,7 +1842,7 @@ export function TripPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </>
           );
         })()}
       </div>
