@@ -39,6 +39,9 @@ export function StylePage() {
   const [newStyleName, setNewStyleName] = useState('');
   const [newStyleIconFile, setNewStyleIconFile] = useState<File | null>(null);
   const [newStyleIconPreview, setNewStyleIconPreview] = useState('');
+
+  const [newStyleImagePreview, setNewStyleImagePreview] = useState('');
+  const [newStyleImageFile, setNewStyleImageFile] = useState<File | null>(null);
   const [editStyleName, setEditStyleName] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -50,8 +53,10 @@ export function StylePage() {
   // Combined manage dialog state
   const [activeActionStyle, setActiveActionStyle] = useState<any>(null);
   const [manageStyleName, setManageStyleName] = useState('');
-  const [manageStyleImage, setManageStyleImage] = useState('');
+  const [manageStyleIconPreview, setManageStyleIconPreview] = useState('');
   const [manageStyleIconFile, setManageStyleIconFile] = useState<File | null>(null);
+  const [manageStyleImagePreview, setManageStyleImagePreview] = useState('');
+  const [manageStyleImageFile, setManageStyleImageFile] = useState<File | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteStyleId, setDeleteStyleId] = useState('');
   const [deleteStyleName, setDeleteStyleName] = useState('');
@@ -122,7 +127,9 @@ export function StylePage() {
 
   // Refs for file inputs
   const addStyleIconInputRef = useRef<HTMLInputElement>(null);
+  const addStyleImageInputRef = useRef<HTMLInputElement>(null);
   const manageStyleIconInputRef = useRef<HTMLInputElement>(null);
+  const manageStyleImageInputRef = useRef<HTMLInputElement>(null);
 
   const handleIconUpload = async (styleId: string, file: File | null) => {
     if (!file) return;
@@ -144,8 +151,13 @@ export function StylePage() {
 
   const clearIconPreview = () => {
     if (newStyleIconPreview) URL.revokeObjectURL(newStyleIconPreview);
+    if (newStyleImagePreview) URL.revokeObjectURL(newStyleImagePreview);
+
     setNewStyleIconPreview('');
+    setNewStyleImagePreview('');
+
     setNewStyleIconFile(null);
+    setNewStyleImageFile(null);
   };
 
   const clearAddStyleMedia = () => {
@@ -154,12 +166,21 @@ export function StylePage() {
 
   const handleCreateStyle = async () => {
     if (!newStyleName.trim()) {
-      alert('Please enter a style name');
+      showToast('Please enter a style name', 'error');
+      return;
+    }
+    if (!newStyleIconFile) {
+      showToast('Please upload an icon', 'error');
+      return;
+    }
+    if (!newStyleImageFile) {
+      showToast('Please upload an image', 'error');
       return;
     }
     const formData = new FormData();
     formData.append('name', newStyleName.trim());
     if (newStyleIconFile) formData.append('icon', newStyleIconFile);
+    if (newStyleImageFile) formData.append('image', newStyleImageFile);
     try {
       const response = await apiClient.post('/styles/create-style', formData);
       const data = response.data;
@@ -215,7 +236,8 @@ export function StylePage() {
       if (activeActionStyle?.id === id) {
         setActiveActionStyle(null);
         setManageStyleName('');
-        setManageStyleImage('');
+        setManageStyleIconPreview('');
+        setManageStyleImagePreview('');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to delete style';
@@ -238,29 +260,54 @@ export function StylePage() {
   const handleOpenManageDialog = (style: any) => {
     setActiveActionStyle(style);
     setManageStyleName(style.name);
-    if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-    setManageStyleImage(style.icon || '');
+    // Revoke previous URLs if they were blobs
+    if (manageStyleIconPreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleIconPreview);
+    if (manageStyleImagePreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleImagePreview);
+
+    setManageStyleIconPreview(style.icon || '');
+    setManageStyleImagePreview(style.image || '');
     setManageStyleIconFile(null);
+    setManageStyleImageFile(null);
   };
 
   const handleManageIconUpload = (file: File | null) => {
     if (!file) return;
     const previewUrl = URL.createObjectURL(file);
-    setManageStyleImage((prev) => {
+    setManageStyleIconPreview((prev) => {
       if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
       return previewUrl;
     });
     setManageStyleIconFile(file);
   };
 
+  const handleManageImageUpload = (file: File | null) => {
+    if (!file) return;
+    const previewUrl = URL.createObjectURL(file);
+    setManageStyleImagePreview((prev) => {
+      if (prev.startsWith('blob:')) URL.revokeObjectURL(prev);
+      return previewUrl;
+    });
+    setManageStyleImageFile(file);
+  };
+
   const handleSaveManageStyle = async () => {
     if (!activeActionStyle || !manageStyleName.trim()) {
-      alert('Please enter a style name');
+      showToast('Please enter a style name', 'error');
+      return;
+    }
+    if (!manageStyleIconPreview) {
+      showToast('Icon is required', 'error');
+      return;
+    }
+    if (!manageStyleImagePreview) {
+      showToast('Image is required', 'error');
       return;
     }
     const formData = new FormData();
     formData.append('name', manageStyleName.trim());
     if (manageStyleIconFile) formData.append('icon', manageStyleIconFile);
+    if (manageStyleImageFile) formData.append('image', manageStyleImageFile);
+
     try {
       const response = await apiClient.put(`/styles/update-style/${activeActionStyle.id}`, formData);
       const data = response.data;
@@ -271,9 +318,15 @@ export function StylePage() {
       fetchStylesFromAPI();
       setActiveActionStyle(null);
       setManageStyleName('');
-      if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-      setManageStyleImage('');
+
+      // Cleanup
+      if (manageStyleIconPreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleIconPreview);
+      if (manageStyleImagePreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleImagePreview);
+
+      setManageStyleIconPreview('');
+      setManageStyleImagePreview('');
       setManageStyleIconFile(null);
+      setManageStyleImageFile(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update style';
       showToast(message, 'error');
@@ -283,9 +336,15 @@ export function StylePage() {
   const handleCancelManageStyle = () => {
     setActiveActionStyle(null);
     setManageStyleName('');
-    if (manageStyleImage.startsWith('blob:')) URL.revokeObjectURL(manageStyleImage);
-    setManageStyleImage('');
+
+    // Cleanup
+    if (manageStyleIconPreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleIconPreview);
+    if (manageStyleImagePreview.startsWith('blob:')) URL.revokeObjectURL(manageStyleImagePreview);
+
+    setManageStyleIconPreview('');
+    setManageStyleImagePreview('');
     setManageStyleIconFile(null);
+    setManageStyleImageFile(null);
   };
 
   return (
@@ -341,7 +400,7 @@ export function StylePage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="add-style-icon">Icon</Label>
+                <Label htmlFor="add-style-icon">Icon <span className="text-red-500">*</span></Label>
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {newStyleIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
@@ -388,6 +447,58 @@ export function StylePage() {
                     style={{ backgroundColor: '#06B3C4' }}
                   >
                     {newStyleIconPreview ? 'Change Icon' : 'Upload Icon'}
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="add-style-image">Image <span className="text-red-500">*</span></Label>
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {newStyleImagePreview ? (
+                    <div className="w-48 h-32 rounded-lg overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={newStyleImagePreview}
+                        alt="Style image preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-48 h-32 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No image</span>
+                    </div>
+                  )}
+                  <input
+                    ref={addStyleImageInputRef}
+                    id="add-style-image"
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) {
+                        e.target.value = '';
+                        return;
+                      }
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        showToast('File size must be less than 5MB', 'error');
+                        e.target.value = '';
+                        return;
+                      }
+                      const previewUrl = URL.createObjectURL(file);
+                      setNewStyleImagePreview((prev) => {
+                        if (prev) URL.revokeObjectURL(prev);
+                        return previewUrl;
+                      });
+                      setNewStyleImageFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <label
+                    htmlFor="add-style-image"
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    {newStyleImagePreview ? 'Change Image' : 'Upload Image'}
                   </label>
                 </div>
               </div>
@@ -709,12 +820,12 @@ export function StylePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="manage-style-icon">Icon</Label>
+                <Label htmlFor="manage-style-icon">Icon <span className="text-red-500">*</span></Label>
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
-                  {manageStyleImage ? (
+                  {manageStyleIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
                       <img
-                        src={manageStyleImage}
+                        src={manageStyleIconPreview}
                         alt="Style icon preview"
                         className="w-full h-full object-cover"
                       />
@@ -755,7 +866,55 @@ export function StylePage() {
                     className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
                     style={{ backgroundColor: '#06B3C4' }}
                   >
-                    {manageStyleImage ? 'Change Icon' : 'Upload Icon'}
+                    {manageStyleIconPreview ? 'Change Icon' : 'Upload Icon'}
+                  </label>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="manage-style-image">Image <span className="text-red-500">*</span></Label>
+                <div className="flex flex-col items-center justify-center gap-4 py-4">
+                  {manageStyleImagePreview ? (
+                    <div className="w-48 h-32 rounded-lg overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
+                      <img
+                        src={manageStyleImagePreview}
+                        alt="Style image preview"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  ) : (
+                    <div className="w-48 h-32 rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">No image</span>
+                    </div>
+                  )}
+                  <input
+                    ref={manageStyleImageInputRef}
+                    id={`manage-image-${activeActionStyle.id}`}
+                    type="file"
+                    accept="image/*"
+                    className="visually-hidden-input"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) {
+                        e.target.value = '';
+                        return;
+                      }
+                      // Basic image validation (check size)
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        showToast('File size must be less than 5MB', 'error');
+                        e.target.value = '';
+                        return;
+                      }
+                      handleManageImageUpload(file);
+                      e.target.value = '';
+                    }}
+                  />
+                  <label
+                    htmlFor={`manage-image-${activeActionStyle.id}`}
+                    className="inline-flex items-center justify-center h-9 rounded-md px-4 text-sm font-medium text-white hover:opacity-90 border-0 cursor-pointer"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    {manageStyleImagePreview ? 'Change Image' : 'Upload Image'}
                   </label>
                 </div>
               </div>
