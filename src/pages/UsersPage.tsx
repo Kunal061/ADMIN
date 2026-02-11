@@ -43,7 +43,7 @@ export function UsersPage() {
   const [newEmergencyRelationship, setNewEmergencyRelationship] = useState('');
   const [newEmergencyContactNo, setNewEmergencyContactNo] = useState('');
   const [newEmergencyEmail, setNewEmergencyEmail] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ field: string; message: string } | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [manageUserId, setManageUserId] = useState('');
@@ -61,6 +61,7 @@ export function UsersPage() {
   const [manageEmergencyEmail, setManageEmergencyEmail] = useState('');
   const [manageSelectedMoodIds, setManageSelectedMoodIds] = useState<string[]>([]);
   const [manageSelectedStyleIds, setManageSelectedStyleIds] = useState<string[]>([]);
+  const [manageError, setManageError] = useState<{ field: string; message: string } | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteUserId, setDeleteUserId] = useState('');
   const [deleteUserName, setDeleteUserName] = useState('');
@@ -244,27 +245,47 @@ export function UsersPage() {
     const trimmedLastName = newLastName.trim();
 
     if (!email) {
-      setError('Please enter an email address');
+      setError({ field: 'email', message: 'Please enter an email address' });
       return;
     }
     if (!email.includes('@')) {
-      setError('Please enter a valid email address');
+      setError({ field: 'email', message: 'Please enter a valid email address' });
       return;
     }
     if (!trimmedFirstName) {
-      setError('Please enter first name');
+      setError({ field: 'firstName', message: 'Please enter first name' });
       return;
     }
     if (!trimmedLastName) {
-      setError('Please enter last name');
+      setError({ field: 'lastName', message: 'Please enter last name' });
       return;
     }
     if (!newPassword.trim()) {
-      setError('Please enter a password');
+      setError({ field: 'password', message: 'Please enter a password' });
       return;
     }
     if (!newGender.trim()) {
-      setError('Please select a gender option');
+      setError({ field: 'gender', message: 'Please select a gender option' });
+      return;
+    }
+    if (!newEmergencyName.trim()) {
+      setError({ field: 'emergencyName', message: 'Please enter emergency contact name' });
+      return;
+    }
+    if (!newEmergencyRelationship.trim()) {
+      setError({ field: 'emergencyRelationship', message: 'Please enter emergency relationship' });
+      return;
+    }
+    if (!newEmergencyContactNo.trim()) {
+      setError({ field: 'emergencyContact', message: 'Please enter emergency contact number' });
+      return;
+    }
+    if (!newEmergencyEmail.trim()) {
+      setError({ field: 'emergencyEmail', message: 'Please enter emergency contact email' });
+      return;
+    }
+    if (!newEmergencyEmail.includes('@')) {
+      setError({ field: 'emergencyEmail', message: 'Please enter a valid emergency contact email' });
       return;
     }
 
@@ -302,9 +323,7 @@ export function UsersPage() {
       contactNo: newEmergencyContactNo.trim() || undefined,
       email: newEmergencyEmail.trim() || undefined,
     };
-    if (emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email) {
-      payload.emergency = emergency;
-    }
+    payload.emergency = emergency;
 
     try {
       const response = await apiClient.post('/admin/users', payload);
@@ -328,9 +347,7 @@ export function UsersPage() {
         gender: newGender.trim() || undefined,
         mood: mood.length ? mood : undefined,
         style: style.length ? style : undefined,
-        emergency: emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email
-          ? emergency
-          : undefined,
+        emergency,
       });
       refreshTripUsers();
     }
@@ -396,6 +413,7 @@ export function UsersPage() {
   setManageEmergencyEmail('');
   setManageSelectedMoodIds([]);
   setManageSelectedStyleIds([]);
+  setManageError(null);
   };
 
   const handleSaveUser = async () => {
@@ -403,6 +421,27 @@ export function UsersPage() {
       resetManageDialog();
       return;
     }
+    if (!manageEmergencyName.trim()) {
+      setManageError({ field: 'emergencyName', message: 'Please enter emergency contact name' });
+      return;
+    }
+    if (!manageEmergencyRelationship.trim()) {
+      setManageError({ field: 'emergencyRelationship', message: 'Please enter emergency relationship' });
+      return;
+    }
+    if (!manageEmergencyContactNo.trim()) {
+      setManageError({ field: 'emergencyContact', message: 'Please enter emergency contact number' });
+      return;
+    }
+    if (!manageEmergencyEmail.trim()) {
+      setManageError({ field: 'emergencyEmail', message: 'Please enter emergency contact email' });
+      return;
+    }
+    if (!manageEmergencyEmail.includes('@')) {
+      setManageError({ field: 'emergencyEmail', message: 'Please enter a valid emergency contact email' });
+      return;
+    }
+    setManageError(null);
   const trimmedFirstName = manageFirstName.trim();
   const trimmedLastName = manageLastName.trim();
     const dateOfBirth = manageDobYear && manageDobMonth && manageDobDay
@@ -447,10 +486,8 @@ export function UsersPage() {
       contactNo: manageEmergencyContactNo.trim() || undefined,
       email: manageEmergencyEmail.trim() || undefined,
     };
-    if (emergency.contactName || emergency.relationship || emergency.contactNo || emergency.email) {
-      payload.emergency = emergency;
-      updateData.emergency = emergency;
-    }
+    payload.emergency = emergency;
+    updateData.emergency = emergency;
     try {
       const response = await apiClient.put(`/admin/users/${manageUserId}`, payload);
       if (response.status < 200 || response.status >= 300) throw new Error('Failed to update on API');
@@ -549,6 +586,7 @@ export function UsersPage() {
                   value={newFirstName}
                   onChange={(e) => setNewFirstName(e.target.value)}
                 />
+                {error?.field === 'firstName' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-last-name">Last Name <span className="text-red-500">*</span></Label>
@@ -559,6 +597,7 @@ export function UsersPage() {
                   value={newLastName}
                   onChange={(e) => setNewLastName(e.target.value)}
                 />
+                {error?.field === 'lastName' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-email">Email Address <span className="text-red-500">*</span></Label>
@@ -569,6 +608,7 @@ export function UsersPage() {
                   value={newEmail}
                   onChange={(e) => setNewEmail(e.target.value)}
                 />
+                {error?.field === 'email' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-phone">Phone Number</Label>
@@ -588,6 +628,7 @@ export function UsersPage() {
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
+                {error?.field === 'password' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-dob">Date of Birth</Label>
@@ -641,6 +682,7 @@ export function UsersPage() {
                   <option value="Other">Other</option>
                   <option value="Prefer not to say">Prefer not to say</option>
                 </select>
+                {error?.field === 'gender' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label>Select Moods</Label>
@@ -769,7 +811,7 @@ export function UsersPage() {
                   EMERGENCY DETAILS
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-name">Emergency Contact Name</Label>
+                  <Label htmlFor="emergency-name">Emergency Contact Name <span className="text-red-500">*</span></Label>
                   <Input
                     id="emergency-name"
                     type="text"
@@ -777,9 +819,10 @@ export function UsersPage() {
                     value={newEmergencyName}
                     onChange={(e) => setNewEmergencyName(e.target.value)}
                   />
+                  {error?.field === 'emergencyName' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-relationship">Emergency Relationship</Label>
+                  <Label htmlFor="emergency-relationship">Emergency Relationship <span className="text-red-500">*</span></Label>
                   <Input
                     id="emergency-relationship"
                     type="text"
@@ -787,18 +830,20 @@ export function UsersPage() {
                     value={newEmergencyRelationship}
                     onChange={(e) => setNewEmergencyRelationship(e.target.value)}
                   />
+                  {error?.field === 'emergencyRelationship' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
+                  <Label htmlFor="emergency-contact">Emergency Contact Number <span className="text-red-500">*</span></Label>
                   <PhoneInput
                     id="emergency-contact"
                     value={newEmergencyContactNo}
                     onChange={setNewEmergencyContactNo}
                     placeholder="Contact number"
                   />
+                  {error?.field === 'emergencyContact' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-email">Emergency Email</Label>
+                  <Label htmlFor="emergency-email">Emergency Email <span className="text-red-500">*</span></Label>
                   <Input
                     id="emergency-email"
                     type="email"
@@ -806,9 +851,9 @@ export function UsersPage() {
                     value={newEmergencyEmail}
                     onChange={(e) => setNewEmergencyEmail(e.target.value)}
                   />
+                  {error?.field === 'emergencyEmail' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
               </div>
-              {error && <p className="text-xs text-red-500">{error}</p>}
             </div>
             <DialogFooter className="flex justify-end gap-1.5 mt-4">
               <Button
@@ -1147,6 +1192,7 @@ export function UsersPage() {
         onOpenChange={(open) => {
           setManageDialogOpen(open);
           if (!open) {
+            setManageError(null);
             setManageUserId('');
             setManageFirstName('');
             setManageLastName('');
@@ -1361,7 +1407,7 @@ export function UsersPage() {
                 EMERGENCY DETAILS
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manage-emergency-name">Emergency Contact Name</Label>
+                <Label htmlFor="manage-emergency-name">Emergency Contact Name <span className="text-red-500">*</span></Label>
                 <Input
                   id="manage-emergency-name"
                   type="text"
@@ -1369,9 +1415,10 @@ export function UsersPage() {
                   value={manageEmergencyName}
                   onChange={(e) => setManageEmergencyName(e.target.value)}
                 />
+                {manageError?.field === 'emergencyName' && <p className="text-xs text-red-500">{manageError.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manage-emergency-relationship">Emergency Relationship</Label>
+                <Label htmlFor="manage-emergency-relationship">Emergency Relationship <span className="text-red-500">*</span></Label>
                 <Input
                   id="manage-emergency-relationship"
                   type="text"
@@ -1379,18 +1426,20 @@ export function UsersPage() {
                   value={manageEmergencyRelationship}
                   onChange={(e) => setManageEmergencyRelationship(e.target.value)}
                 />
+                {manageError?.field === 'emergencyRelationship' && <p className="text-xs text-red-500">{manageError.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manage-emergency-contact">Emergency Contact Number</Label>
+                <Label htmlFor="manage-emergency-contact">Emergency Contact Number <span className="text-red-500">*</span></Label>
                 <PhoneInput
                   id="manage-emergency-contact"
                   value={manageEmergencyContactNo}
                   onChange={setManageEmergencyContactNo}
                   placeholder="Contact number"
                 />
+                {manageError?.field === 'emergencyContact' && <p className="text-xs text-red-500">{manageError.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="manage-emergency-email">Emergency Email</Label>
+                <Label htmlFor="manage-emergency-email">Emergency Email <span className="text-red-500">*</span></Label>
                 <Input
                   id="manage-emergency-email"
                   type="email"
@@ -1398,6 +1447,7 @@ export function UsersPage() {
                   value={manageEmergencyEmail}
                   onChange={(e) => setManageEmergencyEmail(e.target.value)}
                 />
+                {manageError?.field === 'emergencyEmail' && <p className="text-xs text-red-500">{manageError.message}</p>}
               </div>
             </div>
           </div>
