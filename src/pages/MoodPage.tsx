@@ -1,6 +1,6 @@
 import { useApp } from '@/context/AppContext';
 import { Button } from '@/components/ui/button';
-import { Trash2, Plus, Edit, Search, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Trash2, Plus, Edit, Search, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +17,33 @@ import { useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/apiClient';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
-const IMAGE_LOAD_ERROR_MSG = 'Image could not be loaded. Try a smaller or different image.';
+
+const ACCEPTED_ICON_EXTENSIONS = ['.svg', '.jpg', '.jpeg', '.png'];
+const ACCEPTED_ICON_TYPES = ['image/svg+xml', 'image/jpeg', 'image/jpg', 'image/png'];
+const ACCEPTED_ICON_ACCEPT = '.svg,.jpg,.jpeg,.png,image/svg+xml,image/jpeg,image/jpg,image/png';
+
+const isValidIconFile = (file: File): boolean => {
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+  const typeOk = ACCEPTED_ICON_TYPES.includes(file.type);
+  const extOk = ACCEPTED_ICON_EXTENSIONS.includes(ext);
+  return typeOk || extOk;
+};
+
+const getMoodIconUrl = (mood: any): string => {
+  if (typeof mood.icon === 'string' && mood.icon.trim()) return mood.icon.trim();
+  if (typeof mood.image === 'string' && mood.image.trim()) return mood.image.trim();
+  const mi = mood.moodImage;
+  if (mi && typeof mi === 'object' && typeof mi.image === 'string' && mi.image.trim())
+    return mi.image.trim();
+  if (typeof mi === 'string' && mi.trim()) return mi.trim();
+  return '';
+};
+
+const revokeBlobUrl = (url: string) => {
+  if (url?.startsWith?.('blob:')) URL.revokeObjectURL(url);
+};
+
+const isSvgUrl = (url: string) => /\.svg(\?|$)/i.test(url) || /image\/svg/i.test(url);
 
 export function MoodPage() {
   const { showToast } = useApp();
@@ -31,7 +57,7 @@ export function MoodPage() {
   const [newMoodIconFile, setNewMoodIconFile] = useState<File | null>(null);
   const [newMoodIconPreview, setNewMoodIconPreview] = useState('');
   const [editMoodName, setEditMoodName] = useState('');
-  
+
   const [searchQuery, setSearchQuery] = useState('');
 
   // Pagination state
@@ -48,6 +74,9 @@ export function MoodPage() {
   const [deleteMoodId, setDeleteMoodId] = useState('');
   const [deleteMoodName, setDeleteMoodName] = useState('');
   const [deleteLoading, setDeleteLoading] = useState(false);
+  const [manageSaveLoading, setManageSaveLoading] = useState(false);
+  const [createMoodLoading, setCreateMoodLoading] = useState(false);
+  const [failedIconIds, setFailedIconIds] = useState<Set<string>>(new Set());
 
   const addMoodIconInputRef = useRef<HTMLInputElement>(null);
   const manageMoodIconInputRef = useRef<HTMLInputElement>(null);
@@ -55,7 +84,7 @@ export function MoodPage() {
   const mapApiMood = (mood: any) => ({
     id: String(mood.id || mood._id),
     name: mood.moodName || mood.name || '',
-    image: mood.icon || mood.image || '',
+    image: getMoodIconUrl(mood),
     moodImage: mood.image ? { image: mood.image } : undefined,
     color: mood.color || '#000000',
     isActive: mood.isActive ?? true,
@@ -73,6 +102,7 @@ export function MoodPage() {
       const list = data?.data?.data || data?.data || data || [];
       const transformed = Array.isArray(list) ? list.map(mapApiMood) : [];
       setMoods(transformed);
+      setFailedIconIds(new Set());
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch moods';
       setApiError(message);
@@ -106,13 +136,14 @@ export function MoodPage() {
     }
 
     try {
+      setCreateMoodLoading(true);
       const formData = new FormData();
-  formData.append('moodName', newMoodName.trim());
+      formData.append('moodName', newMoodName.trim());
       if (newMoodColor.trim()) {
         formData.append('color', newMoodColor.trim());
       }
       if (newMoodIconFile) {
-        formData.append('icon', newMoodIconFile);
+        formData.append('icon', newMoodIconFile, newMoodIconFile.name);
       }
       const response = await apiClient.post('/moods/create-mood', formData);
       const data = response.data;
@@ -123,12 +154,17 @@ export function MoodPage() {
       setNewMoodName('');
       setNewMoodColor('#000000');
       setNewMoodIconFile(null);
-      setNewMoodIconPreview('');
+      setNewMoodIconPreview((prev) => {
+        revokeBlobUrl(prev);
+        return '';
+      });
       setDialogOpen(false);
       fetchMoodsFromAPI();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to create mood';
       showToast(message, 'error');
+    } finally {
+      setCreateMoodLoading(false);
     }
   };
 
@@ -167,7 +203,10 @@ export function MoodPage() {
       if (activeActionMood?.id === id) {
         setActiveActionMood(null);
         setManageMoodName('');
-        setManageMoodIconPreview('');
+        setManageMoodIconPreview((prev) => {
+          revokeBlobUrl(prev);
+          return '';
+        });
         setManageMoodIconFile(null);
       }
       fetchMoodsFromAPI();
@@ -203,13 +242,14 @@ export function MoodPage() {
       return;
     }
     try {
+      setManageSaveLoading(true);
       const formData = new FormData();
-  formData.append('moodName', manageMoodName.trim());
+      formData.append('moodName', manageMoodName.trim());
       if (manageMoodColor.trim()) {
         formData.append('color', manageMoodColor.trim());
       }
       if (manageMoodIconFile) {
-        formData.append('icon', manageMoodIconFile);
+        formData.append('icon', manageMoodIconFile, manageMoodIconFile.name);
       }
       const response = await apiClient.put(`/moods/update-mood/${activeActionMood.id}`, formData);
       const data = response.data;
@@ -219,22 +259,31 @@ export function MoodPage() {
       showToast('Mood updated successfully!');
       setActiveActionMood(null);
       setManageMoodName('');
-      setManageMoodIconPreview('');
+      setManageMoodIconPreview((prev) => {
+        revokeBlobUrl(prev);
+        return '';
+      });
       setManageMoodIconFile(null);
-  setManageMoodColor('#000000');
+      setManageMoodColor('#000000');
       fetchMoodsFromAPI();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update mood';
       showToast(message, 'error');
+    } finally {
+      setManageSaveLoading(false);
     }
   };
 
   const handleCancelManageMood = () => {
     setActiveActionMood(null);
     setManageMoodName('');
-    setManageMoodIconPreview('');
+    setManageMoodIconPreview((prev) => {
+      revokeBlobUrl(prev);
+      return '';
+    });
     setManageMoodIconFile(null);
     setManageMoodColor('#000000');
+    setManageSaveLoading(false);
   };
 
   return (
@@ -259,7 +308,10 @@ export function MoodPage() {
               setNewMoodName('');
               setNewMoodColor('#000000');
               setNewMoodIconFile(null);
-              setNewMoodIconPreview('');
+              setNewMoodIconPreview((prev) => {
+                revokeBlobUrl(prev);
+                return '';
+              });
             }
           }}
         >
@@ -299,7 +351,7 @@ export function MoodPage() {
                       <img
                         src={newMoodIconPreview}
                         alt="Icon preview"
-                        className="w-full h-full object-cover"
+                        className="w-full h-full object-contain"
                       />
                     </div>
                   ) : (
@@ -311,26 +363,26 @@ export function MoodPage() {
                     ref={addMoodIconInputRef}
                     id="add-mood-icon"
                     type="file"
-                    accept="image/*"
+                    accept={ACCEPTED_ICON_ACCEPT}
                     className="visually-hidden-input"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (!isValidIconFile(file)) {
+                        alert('Please choose an image in .svg, .jpg, .jpeg, or .png format.');
+                        e.target.value = '';
+                        return;
+                      }
                       if (file.size > MAX_IMAGE_SIZE_BYTES) {
                         alert('Image is too large. Please choose an image under 5 MB.');
                         e.target.value = '';
                         return;
                       }
                       setNewMoodIconFile(file);
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        const result = reader.result;
-                        if (typeof result === 'string') setNewMoodIconPreview(result);
-                      };
-                      reader.onerror = () => {
-                        alert(IMAGE_LOAD_ERROR_MSG);
-                      };
-                      reader.readAsDataURL(file);
+                      setNewMoodIconPreview((prev) => {
+                        revokeBlobUrl(prev);
+                        return URL.createObjectURL(file);
+                      });
                       e.target.value = '';
                     }}
                   />
@@ -360,7 +412,10 @@ export function MoodPage() {
                   setNewMoodName('');
                   setNewMoodColor('#000000');
                   setNewMoodIconFile(null);
-                  setNewMoodIconPreview('');
+                  setNewMoodIconPreview((prev) => {
+                    revokeBlobUrl(prev);
+                    return '';
+                  });
                 }}
                 className="text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
@@ -369,10 +424,18 @@ export function MoodPage() {
               </Button>
               <Button
                 onClick={handleCreateMood}
-                className="text-white hover:opacity-90 border-0 font-medium"
+                disabled={createMoodLoading}
+                className="text-white hover:opacity-90 border-0 font-medium disabled:opacity-70 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#06B3C4' }}
               >
-                Create Mood
+                {createMoodLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Mood'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -411,194 +474,233 @@ export function MoodPage() {
               </p>
             </div>
           ) : (
-          <>
-          {/* Mobile: card list */}
-          <div className="lg:hidden space-y-3 p-4">
-            {paginatedMoods.map((mood) => (
-              <div
-                key={mood.id}
-                className="flex items-center gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#EEF0F1' }}
-              >
-                <div className="shrink-0 flex items-center gap-3">
-                  {mood.image ? (
-                    <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white">
-                      <img
-                        src={mood.image}
-                        alt={mood.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : (
-                    <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
-                      <span className="text-gray-400 text-xs">—</span>
-                    </div>
-                  )}
+            <>
+              {/* Mobile: card list */}
+              <div className="lg:hidden space-y-3 p-4">
+                {paginatedMoods.map((mood) => (
                   <div
-                    className="w-8 h-8 rounded border border-gray-300 shrink-0"
-                    style={{ backgroundColor: mood.color || '#000000' }}
-                    title={mood.color || '#000000'}
-                  />
-                </div>
-                <div className="flex-1 min-w-0 font-medium text-gray-900">{mood.name}</div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Button
-                    size="sm"
-                    onClick={() => handleOpenManageDialog(mood)}
-                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                    style={{ backgroundColor: '#06B3C4' }}
+                    key={mood.id}
+                    className="flex items-center gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: '#EEF0F1' }}
                   >
-                    <Edit className="h-4 w-4 text-white" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
-                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    <Trash2 className="h-4 w-4 text-white" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Desktop: table */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full table-fixed">
-              <thead>
-                <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
-                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Color</th>
-                  <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedMoods.map((mood) => {
-                  return (
-                    <tr
-                      key={mood.id}
-                      className="border-b transition-colors"
-                      style={{
-                        borderColor: '#EEF0F1',
-                      }}
-                    >
-                      <td className="w-[25%] py-4 px-6 text-left">
-                        <div className="font-medium text-gray-900">
-                          {mood.name}
-                        </div>
-                      </td>
-                      <td className="w-[20%] py-4 px-6 text-left">
-                        {mood.image ? (
-                          <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
+                    <div className="shrink-0 flex items-center gap-3">
+                      {mood.image && !failedIconIds.has(mood.id) ? (
+                        <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
+                          {isSvgUrl(mood.image) ? (
+                            <object
+                              data={mood.image}
+                              type="image/svg+xml"
+                              className="w-full h-full object-contain"
+                            >
+                              <img
+                                src={mood.image}
+                                alt={mood.name}
+                                className="w-full h-full object-contain"
+                                referrerPolicy="no-referrer"
+                                onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
+                              />
+                            </object>
+                          ) : (
                             <img
                               src={mood.image}
                               alt={mood.name}
-                              className="w-full h-full object-cover"
+                              className="w-full h-full object-contain"
+                              referrerPolicy="no-referrer"
+                              onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
                             />
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">—</span>
-                        )}
-                      </td>
-                      <td className="w-[15%] py-4 px-6 text-left">
-                        <div 
-                          className="w-8 h-8 rounded border border-gray-300"
-                          style={{ backgroundColor: mood.color || '#000000' }}
-                          title={mood.color || '#000000'}
-                        />
-                      </td>
-                      <td className="w-[20%] py-3 px-6 text-right">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenManageDialog(mood)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Edit className="h-4 w-4 text-white" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Trash2 className="h-4 w-4 text-white" />
-                          </Button>
+                          )}
                         </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-            
-          {/* Pagination Controls */}
-          <div className="px-6 py-4 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F1' }}>
-              <div className="text-sm text-gray-600">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredMoods.length)} of {filteredMoods.length} moods
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                    const showPage = page === 1 || 
-                                    page === totalPages || 
-                                    (page >= currentPage - 1 && page <= currentPage + 1);
-                    
-                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
-                                        (page === currentPage + 2 && currentPage < totalPages - 2);
-                    
-                    if (showEllipsis) {
-                      return <span key={page} className="px-2 text-gray-500">...</span>;
-                    }
-                    
-                    if (!showPage) return null;
-                    
-                    return (
+                      ) : (
+                        <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
+                          <span className="text-gray-400 text-xs">—</span>
+                        </div>
+                      )}
+                      <div
+                        className="w-8 h-8 rounded border border-gray-300 shrink-0"
+                        style={{ backgroundColor: mood.color || '#000000' }}
+                        title={mood.color || '#000000'}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0 font-medium text-gray-900">{mood.name}</div>
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <Button
-                        key={page}
-                        variant="ghost"
-                        onClick={() => setCurrentPage(page)}
-                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
-                          currentPage === page
+                        size="sm"
+                        onClick={() => handleOpenManageDialog(mood)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Edit className="h-4 w-4 text-white" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Trash2 className="h-4 w-4 text-white" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Desktop: table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full table-fixed">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
+                      <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
+                      <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
+                      <th className="w-[10%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Color</th>
+                      <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Color Code</th>
+                      <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedMoods.map((mood) => {
+                      return (
+                        <tr
+                          key={mood.id}
+                          className="border-b transition-colors"
+                          style={{
+                            borderColor: '#EEF0F1',
+                          }}
+                        >
+                          <td className="w-[25%] py-4 px-6 text-left">
+                            <div className="font-medium text-gray-900">
+                              {mood.name}
+                            </div>
+                          </td>
+                          <td className="w-[20%] py-4 px-6 text-left">
+                            {mood.image && !failedIconIds.has(mood.id) ? (
+                              <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
+                                {isSvgUrl(mood.image) ? (
+                                  <object
+                                    data={mood.image}
+                                    type="image/svg+xml"
+                                    className="w-full h-full object-contain"
+                                  >
+                                    <img
+                                      src={mood.image}
+                                      alt={mood.name}
+                                      className="w-full h-full object-contain"
+                                      referrerPolicy="no-referrer"
+                                      onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
+                                    />
+                                  </object>
+                                ) : (
+                                  <img
+                                    src={mood.image}
+                                    alt={mood.name}
+                                    className="w-full h-full object-contain"
+                                    referrerPolicy="no-referrer"
+                                    onError={() => setFailedIconIds(prev => new Set(prev).add(mood.id))}
+                                  />
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="w-[10%] py-4 px-6 text-left">
+                            <div
+                              className="w-8 h-8 rounded border border-gray-300"
+                              style={{ backgroundColor: mood.color || '#000000' }}
+                              title={mood.color || '#000000'}
+                            />
+                          </td>
+                          <td className="w-[15%] py-4 px-6 text-left">
+                            <span className="text-sm text-gray-700 font-mono">{mood.color || '#000000'}</span>
+                          </td>
+                          <td className="w-[20%] py-3 px-6 text-right">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenManageDialog(mood)}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Edit className="h-4 w-4 text-white" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleRequestDeleteMood(String(mood.id), mood.name)}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Trash2 className="h-4 w-4 text-white" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="px-6 py-4 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F1' }}>
+                <div className="text-sm text-gray-600">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredMoods.length)} of {filteredMoods.length} moods
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                      const showPage = page === 1 ||
+                        page === totalPages ||
+                        (page >= currentPage - 1 && page <= currentPage + 1);
+
+                      const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                        (page === currentPage + 2 && currentPage < totalPages - 2);
+
+                      if (showEllipsis) {
+                        return <span key={page} className="px-2 text-gray-500">...</span>;
+                      }
+
+                      if (!showPage) return null;
+
+                      return (
+                        <Button
+                          key={page}
+                          variant="ghost"
+                          onClick={() => setCurrentPage(page)}
+                          className={`h-8 min-w-8 px-2 text-sm border transition-colors ${currentPage === page
                             ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
                             : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
-                        }`}
-                        style={
-                          currentPage === page 
-                            ? { backgroundColor: '#06B3C4' } 
-                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
-                        }
-                      >
-                        {page}
-                      </Button>
-                    );
-                  })}
-                </div>
+                            }`}
+                          style={
+                            currentPage === page
+                              ? { backgroundColor: '#06B3C4' }
+                              : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                          }
+                        >
+                          {page}
+                        </Button>
+                      );
+                    })}
+                  </div>
 
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </>
+            </>
           );
         })()}
       </div>
@@ -687,12 +789,28 @@ export function MoodPage() {
                 <Label htmlFor="manage-mood-icon">Icon</Label>
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {manageMoodIconPreview ? (
-                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
-                        src={manageMoodIconPreview}
-                        alt="Mood icon preview"
-                        className="w-full h-full object-cover"
-                      />
+                    <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm flex items-center justify-center">
+                      {isSvgUrl(manageMoodIconPreview) ? (
+                        <object
+                          data={manageMoodIconPreview}
+                          type="image/svg+xml"
+                          className="w-full h-full object-contain"
+                        >
+                          <img
+                            src={manageMoodIconPreview}
+                            alt="Mood icon preview"
+                            className="w-full h-full object-contain"
+                            referrerPolicy="no-referrer"
+                          />
+                        </object>
+                      ) : (
+                        <img
+                          src={manageMoodIconPreview}
+                          alt="Mood icon preview"
+                          className="w-full h-full object-contain"
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
                     </div>
                   ) : (
                     <div className="w-24 h-24 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center">
@@ -703,26 +821,26 @@ export function MoodPage() {
                     ref={manageMoodIconInputRef}
                     id={`manage-icon-${activeActionMood.id}`}
                     type="file"
-                    accept="image/*"
+                    accept={ACCEPTED_ICON_ACCEPT}
                     className="visually-hidden-input"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (!isValidIconFile(file)) {
+                        alert('Please choose an image in .svg, .jpg, .jpeg, or .png format.');
+                        e.target.value = '';
+                        return;
+                      }
                       if (file.size > MAX_IMAGE_SIZE_BYTES) {
                         alert('Image is too large. Please choose an image under 5 MB.');
                         e.target.value = '';
                         return;
                       }
                       setManageMoodIconFile(file);
-                      const reader = new FileReader();
-                      reader.onloadend = () => {
-                        const result = reader.result;
-                        if (typeof result === 'string') setManageMoodIconPreview(result);
-                      };
-                      reader.onerror = () => {
-                        alert(IMAGE_LOAD_ERROR_MSG);
-                      };
-                      reader.readAsDataURL(file);
+                      setManageMoodIconPreview((prev) => {
+                        revokeBlobUrl(prev);
+                        return URL.createObjectURL(file);
+                      });
                       e.target.value = '';
                     }}
                   />
@@ -756,10 +874,18 @@ export function MoodPage() {
               </Button>
               <Button
                 onClick={handleSaveManageMood}
-                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                disabled={manageSaveLoading}
+                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium disabled:opacity-70 disabled:cursor-not-allowed"
                 style={{ backgroundColor: '#06B3C4' }}
               >
-                Save Changes
+                {manageSaveLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  'Save Changes'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

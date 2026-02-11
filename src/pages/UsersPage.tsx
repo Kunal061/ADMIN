@@ -68,7 +68,7 @@ export function UsersPage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [loading, setLoading] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const ITEMS_PER_PAGE = 15;
@@ -150,7 +150,7 @@ export function UsersPage() {
             : undefined,
         };
       });
-      
+
       setTripUsers(transformedUsers);
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to fetch users';
@@ -244,6 +244,7 @@ export function UsersPage() {
     const email = newEmail.trim().toLowerCase();
     const trimmedFirstName = newFirstName.trim();
     const trimmedLastName = newLastName.trim();
+    const trimmedPhone = newPhone.trim();
 
     if (!email) {
       setError({ field: 'email', message: 'Please enter an email address' });
@@ -261,31 +262,32 @@ export function UsersPage() {
       setError({ field: 'lastName', message: 'Please enter last name' });
       return;
     }
+    if (!trimmedPhone) {
+      setError({ field: 'phone', message: 'Please enter a phone number' });
+      return;
+    }
     if (!newPassword.trim()) {
       setError({ field: 'password', message: 'Please enter a password' });
+      return;
+    }
+    if (newPassword.trim().length < 8) {
+      setError({ field: 'password', message: 'Password must be at least 8 characters long' });
+      return;
+    }
+    // Check password complexity: at least one uppercase, one lowercase, one number
+    const hasUpperCase = /[A-Z]/.test(newPassword);
+    const hasLowerCase = /[a-z]/.test(newPassword);
+    const hasNumber = /[0-9]/.test(newPassword);
+    if (!hasUpperCase || !hasLowerCase || !hasNumber) {
+      setError({ field: 'password', message: 'Password must contain uppercase, lowercase, and number' });
       return;
     }
     if (!newGender.trim()) {
       setError({ field: 'gender', message: 'Please select a gender option' });
       return;
     }
-    if (!newEmergencyName.trim()) {
-      setError({ field: 'emergencyName', message: 'Please enter emergency contact name' });
-      return;
-    }
-    if (!newEmergencyRelationship.trim()) {
-      setError({ field: 'emergencyRelationship', message: 'Please enter emergency relationship' });
-      return;
-    }
-    if (!newEmergencyContactNo.trim()) {
-      setError({ field: 'emergencyContact', message: 'Please enter emergency contact number' });
-      return;
-    }
-    if (!newEmergencyEmail.trim()) {
-      setError({ field: 'emergencyEmail', message: 'Please enter emergency contact email' });
-      return;
-    }
-    if (!newEmergencyEmail.includes('@')) {
+    // Emergency fields are now optional - validate only if provided
+    if (newEmergencyEmail.trim() && !newEmergencyEmail.includes('@')) {
       setError({ field: 'emergencyEmail', message: 'Please enter a valid emergency contact email' });
       return;
     }
@@ -306,25 +308,29 @@ export function UsersPage() {
       return lowered;
     };
     const normalizedGender = normalizeGenderValue(newGender);
-  const trimmedPhone = newPhone.trim();
     const payload: Record<string, unknown> = {
       firstName: trimmedFirstName,
       lastName: trimmedLastName,
       emailAddress: email,
       mobileNo: trimmedPhone || undefined,
       dob: dateOfBirth || undefined,
-  gender: normalizedGender,
+      gender: normalizedGender,
       password: newPassword.trim(),
     };
     if (mood.length) payload.mood = mood;
     if (style.length) payload.style = style;
-    const emergency = {
-      contactName: newEmergencyName.trim() || undefined,
-      relationship: newEmergencyRelationship.trim() || undefined,
-      contactNo: newEmergencyContactNo.trim() || undefined,
-      email: newEmergencyEmail.trim() || undefined,
-    };
-    payload.emergency = emergency;
+    // Only include emergency contact if at least one field is filled
+    const hasEmergencyData = newEmergencyName.trim() || newEmergencyRelationship.trim() ||
+      newEmergencyContactNo.trim() || newEmergencyEmail.trim();
+    if (hasEmergencyData) {
+      const emergency = {
+        contactName: newEmergencyName.trim() || undefined,
+        relationship: newEmergencyRelationship.trim() || undefined,
+        contactNo: newEmergencyContactNo.trim() || undefined,
+        email: newEmergencyEmail.trim() || undefined,
+      };
+      payload.emergency = emergency;
+    }
 
     try {
       const response = await apiClient.post('/admin/users', payload);
@@ -333,24 +339,13 @@ export function UsersPage() {
         const message = responseData?.message || responseData?.error || 'Failed to add user to API';
         throw new Error(message);
       }
-  refreshTripUsers();
-  showToast('User added successfully!');
+      refreshTripUsers();
+      showToast('User added successfully!');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to add user to API';
+      setError({ field: 'general', message: message });
       showToast(message, 'error');
-      showToast('Adding user locally instead.');
-      storage.addTripUser({
-        firstName: trimmedFirstName,
-        lastName: trimmedLastName,
-        email,
-        phone: trimmedPhone || undefined,
-        dateOfBirth,
-        gender: newGender.trim() || undefined,
-        mood: mood.length ? mood : undefined,
-        style: style.length ? style : undefined,
-        emergency,
-      });
-      refreshTripUsers();
+      return; // Don't proceed with local storage fallback on API error
     }
 
     setNewFirstName('');
@@ -362,8 +357,8 @@ export function UsersPage() {
     setNewDobYear('');
     setNewGender('');
     setNewPassword('');
-  setSelectedMoodIds([]);
-  setSelectedStyleIds([]);
+    setSelectedMoodIds([]);
+    setSelectedStyleIds([]);
     setNewEmergencyName('');
     setNewEmergencyRelationship('');
     setNewEmergencyContactNo('');
@@ -398,23 +393,23 @@ export function UsersPage() {
   };
 
   const resetManageDialog = () => {
-  setManageDialogOpen(false);
-  setManageUserId('');
-  setManageFirstName('');
-  setManageLastName('');
-  setManageEmail('');
-  setManagePhone('');
-  setManageDobDay('');
-  setManageDobMonth('');
-  setManageDobYear('');
-  setManageGender('');
-  setManageEmergencyName('');
-  setManageEmergencyRelationship('');
-  setManageEmergencyContactNo('');
-  setManageEmergencyEmail('');
-  setManageSelectedMoodIds([]);
-  setManageSelectedStyleIds([]);
-  setManageError(null);
+    setManageDialogOpen(false);
+    setManageUserId('');
+    setManageFirstName('');
+    setManageLastName('');
+    setManageEmail('');
+    setManagePhone('');
+    setManageDobDay('');
+    setManageDobMonth('');
+    setManageDobYear('');
+    setManageGender('');
+    setManageEmergencyName('');
+    setManageEmergencyRelationship('');
+    setManageEmergencyContactNo('');
+    setManageEmergencyEmail('');
+    setManageSelectedMoodIds([]);
+    setManageSelectedStyleIds([]);
+    setManageError(null);
   };
 
   const handleSaveUser = async () => {
@@ -422,29 +417,14 @@ export function UsersPage() {
       resetManageDialog();
       return;
     }
-    if (!manageEmergencyName.trim()) {
-      setManageError({ field: 'emergencyName', message: 'Please enter emergency contact name' });
-      return;
-    }
-    if (!manageEmergencyRelationship.trim()) {
-      setManageError({ field: 'emergencyRelationship', message: 'Please enter emergency relationship' });
-      return;
-    }
-    if (!manageEmergencyContactNo.trim()) {
-      setManageError({ field: 'emergencyContact', message: 'Please enter emergency contact number' });
-      return;
-    }
-    if (!manageEmergencyEmail.trim()) {
-      setManageError({ field: 'emergencyEmail', message: 'Please enter emergency contact email' });
-      return;
-    }
-    if (!manageEmergencyEmail.includes('@')) {
+    // Emergency fields are optional - only validate email format if provided
+    if (manageEmergencyEmail.trim() && !manageEmergencyEmail.includes('@')) {
       setManageError({ field: 'emergencyEmail', message: 'Please enter a valid emergency contact email' });
       return;
     }
     setManageError(null);
-  const trimmedFirstName = manageFirstName.trim();
-  const trimmedLastName = manageLastName.trim();
+    const trimmedFirstName = manageFirstName.trim();
+    const trimmedLastName = manageLastName.trim();
     const dateOfBirth = manageDobYear && manageDobMonth && manageDobDay
       ? `${manageDobYear}-${manageDobMonth.padStart(2, '0')}-${manageDobDay.padStart(2, '0')}`
       : undefined;
@@ -481,14 +461,19 @@ export function UsersPage() {
       payload.gender = normalizedGender;
       updateData.gender = normalizedGender;
     }
-    const emergency = {
-      contactName: manageEmergencyName.trim() || undefined,
-      relationship: manageEmergencyRelationship.trim() || undefined,
-      contactNo: manageEmergencyContactNo.trim() || undefined,
-      email: manageEmergencyEmail.trim() || undefined,
-    };
-    payload.emergency = emergency;
-    updateData.emergency = emergency;
+    // Only include emergency contact if at least one field is filled
+    const hasEmergencyData = manageEmergencyName.trim() || manageEmergencyRelationship.trim() ||
+      manageEmergencyContactNo.trim() || manageEmergencyEmail.trim();
+    if (hasEmergencyData) {
+      const emergency = {
+        contactName: manageEmergencyName.trim() || undefined,
+        relationship: manageEmergencyRelationship.trim() || undefined,
+        contactNo: manageEmergencyContactNo.trim() || undefined,
+        email: manageEmergencyEmail.trim() || undefined,
+      };
+      payload.emergency = emergency;
+      updateData.emergency = emergency;
+    }
     try {
       const response = await apiClient.put(`/admin/users/${manageUserId}`, payload);
       if (response.status < 200 || response.status >= 300) throw new Error('Failed to update on API');
@@ -537,7 +522,7 @@ export function UsersPage() {
             className="pl-10 pr-4 rounded-full bg-white shadow-sm border-0 focus:outline-none focus:ring-0 focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
-        <Dialog open={dialogOpen}         onOpenChange={(open) => {
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
           setDialogOpen(open);
           if (open) {
             fetchStylesFromAPI();
@@ -612,13 +597,14 @@ export function UsersPage() {
                 {error?.field === 'email' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="user-phone">Phone Number</Label>
+                <Label htmlFor="user-phone">Phone Number <span className="text-red-500">*</span></Label>
                 <PhoneInput
                   id="user-phone"
                   value={newPhone}
                   onChange={setNewPhone}
                   placeholder="Enter your Phone Number"
                 />
+                {error?.field === 'phone' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="user-password">Password <span className="text-red-500">*</span></Label>
@@ -680,8 +666,6 @@ export function UsersPage() {
                   <option value="">Select your gender</option>
                   <option value="Male">Male</option>
                   <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                  <option value="Prefer not to say">Prefer not to say</option>
                 </select>
                 {error?.field === 'gender' && <p className="text-xs text-red-500">{error.message}</p>}
               </div>
@@ -713,17 +697,17 @@ export function UsersPage() {
                             className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
                             style={selected
                               ? {
-                                  backgroundColor: '#06B3C4',
-                                  borderColor: '#06B3C4',
-                                  borderStyle: 'solid',
-                                  borderWidth: '1px',
-                                }
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'solid',
+                                borderWidth: '1px',
+                              }
                               : {
-                                  backgroundColor: '#ffffff',
-                                  borderColor: '#06B3C4',
-                                  borderStyle: 'dashed',
-                                  borderWidth: '1px',
-                                }
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
                             }
                           >
                             {mood.icon ? (
@@ -774,17 +758,17 @@ export function UsersPage() {
                             className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
                             style={selected
                               ? {
-                                  backgroundColor: '#06B3C4',
-                                  borderColor: '#06B3C4',
-                                  borderStyle: 'solid',
-                                  borderWidth: '1px',
-                                }
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'solid',
+                                borderWidth: '1px',
+                              }
                               : {
-                                  backgroundColor: '#ffffff',
-                                  borderColor: '#06B3C4',
-                                  borderStyle: 'dashed',
-                                  borderWidth: '1px',
-                                }
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
                             }
                           >
                             {style.icon ? (
@@ -812,43 +796,41 @@ export function UsersPage() {
                   EMERGENCY DETAILS
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-name">Emergency Contact Name <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="emergency-name">Emergency Contact Name</Label>
                   <Input
                     id="emergency-name"
                     type="text"
-                    placeholder="Contact name"
+                    placeholder="Contact name (optional)"
                     value={newEmergencyName}
                     onChange={(e) => setNewEmergencyName(e.target.value)}
                   />
                   {error?.field === 'emergencyName' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-relationship">Emergency Relationship <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="emergency-relationship">Emergency Relationship</Label>
                   <Input
                     id="emergency-relationship"
                     type="text"
-                    placeholder="Relationship"
+                    placeholder="Relationship (optional)"
                     value={newEmergencyRelationship}
                     onChange={(e) => setNewEmergencyRelationship(e.target.value)}
                   />
-                  {error?.field === 'emergencyRelationship' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-contact">Emergency Contact Number <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="emergency-contact">Emergency Contact Number</Label>
                   <PhoneInput
                     id="emergency-contact"
                     value={newEmergencyContactNo}
                     onChange={setNewEmergencyContactNo}
-                    placeholder="Contact number"
+                    placeholder="Contact number (optional)"
                   />
-                  {error?.field === 'emergencyContact' && <p className="text-xs text-red-500">{error.message}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="emergency-email">Emergency Email <span className="text-red-500">*</span></Label>
+                  <Label htmlFor="emergency-email">Emergency Email</Label>
                   <Input
                     id="emergency-email"
                     type="email"
-                    placeholder="contact@email.com"
+                    placeholder="contact@email.com (optional)"
                     value={newEmergencyEmail}
                     onChange={(e) => setNewEmergencyEmail(e.target.value)}
                   />
@@ -918,26 +900,26 @@ export function UsersPage() {
           const filtered = !query
             ? tripUsers
             : tripUsers.filter((u) => {
-                const searchable = [
-                  u.firstName,
-                  u.lastName,
-                  u.email,
-                  u.phone,
-                  u.dateOfBirth,
-                  u.gender,
-                ]
-                  .filter(Boolean)
-                  .join(' ')
-                  .toLowerCase();
-                return searchable.includes(query);
-              });
-          
+              const searchable = [
+                u.firstName,
+                u.lastName,
+                u.email,
+                u.phone,
+                u.dateOfBirth,
+                u.gender,
+              ]
+                .filter(Boolean)
+                .join(' ')
+                .toLowerCase();
+              return searchable.includes(query);
+            });
+
           // Pagination calculations
           const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
           const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
           const endIndex = startIndex + ITEMS_PER_PAGE;
           const paginatedUsers = filtered.slice(startIndex, endIndex);
-          
+
           return filtered.length === 0 ? (
             <div className="text-center py-10">
               <p className="text-gray-500 text-sm">
@@ -945,244 +927,247 @@ export function UsersPage() {
               </p>
             </div>
           ) : (
-          <>
-          {/* Mobile: card list */}
-          <div className="lg:hidden space-y-3 p-4">
-            {paginatedUsers.map((user) => {
-              const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
-              return (
-                <div
-                  key={user.id}
-                  className="flex flex-col gap-2 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
-                  style={{ borderColor: '#EEF0F1' }}
-                >
-                  <div className="font-medium text-gray-900">{displayName || '—'}</div>
-                  <div className="text-sm text-gray-600">{user.email}</div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
-                    {user.phone && <span>Phone: {user.phone}</span>}
-                    {user.dateOfBirth && <span>DOB: {formatDateOfBirth(user.dateOfBirth)}</span>}
-                    {user.gender && <span>{user.gender}</span>}
-                  </div>
-                  <div className="flex items-center gap-1.5 justify-end pt-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        setManageUserId(user.id);
-                        setManageFirstName(user.firstName || '');
-                        setManageLastName(user.lastName || '');
-                        setManageEmail(user.email);
-                        setManagePhone(user.phone ?? '');
-                        const dob = user.dateOfBirth ?? '';
-                        if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-                          const [y, m, d] = dob.split('-');
-                          setManageDobYear(y);
-                          setManageDobMonth(m);
-                          setManageDobDay(d.replace(/^0+/, '') || d);
-                        } else {
-                          setManageDobDay('');
-                          setManageDobMonth('');
-                          setManageDobYear('');
-                        }
-                        setManageGender(user.gender ?? '');
-                        const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
-                        setManageEmergencyName(emergency.contactName ?? '');
-                        setManageEmergencyRelationship(emergency.relationship ?? '');
-                        setManageEmergencyContactNo(emergency.contactNo ?? '');
-                        setManageEmergencyEmail(emergency.email ?? '');
-                        setManageSelectedMoodIds(user.mood ?? []);
-                        setManageSelectedStyleIds(user.style ?? []);
-                        setManageDialogOpen(true);
-                      }}
-                      className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                      style={{ backgroundColor: '#06B3C4' }}
-                    >
-                      <Edit className="h-4 w-4 text-white" />
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => handleRequestDelete(user.id, displayName)}
-                      className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                      style={{ backgroundColor: '#06B3C4' }}
-                    >
-                      <Trash2 className="h-4 w-4 text-white" />
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Desktop: table */}
-          <div className="hidden lg:block overflow-x-auto font-sans">
-            <table className="w-full font-sans">
-              <thead>
-                <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Name
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Email
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Phone
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Date of Birth
-                  </th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Gender
-                  </th>
-                  <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
+            <>
+              {/* Mobile: card list */}
+              <div className="lg:hidden space-y-3 p-4">
                 {paginatedUsers.map((user) => {
                   const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
                   return (
-                    <tr
+                    <div
                       key={user.id}
-                      className="border-b hover:bg-gray-50 transition-colors"
+                      className="flex flex-col gap-2 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
                       style={{ borderColor: '#EEF0F1' }}
                     >
-                      <td className="py-3 px-4 text-sm text-gray-900 font-medium">
-                        {displayName || '—'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-700">
-                        {user.email}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-700">
-                        {user.phone ?? '—'}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-700">
-                        {formatDateOfBirth(user.dateOfBirth)}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-700">
-                        {user.gender ?? '—'}
-                      </td>
-                      <td className="py-3 px-6">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => {
-                              setManageUserId(user.id);
-                              setManageFirstName(user.firstName || '');
-                              setManageLastName(user.lastName || '');
-                              setManageEmail(user.email);
-                              setManagePhone(user.phone ?? '');
-                              const dob = user.dateOfBirth ?? '';
-                              if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) {
-                                const [y, m, d] = dob.split('-');
-                                setManageDobYear(y);
-                                setManageDobMonth(m);
-                                setManageDobDay(d.replace(/^0+/, '') || d);
-                              } else {
-                                setManageDobDay('');
-                                setManageDobMonth('');
-                                setManageDobYear('');
-                              }
-                              setManageGender(user.gender ?? '');
-                              const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
-                              setManageEmergencyName(emergency.contactName ?? '');
-                              setManageEmergencyRelationship(emergency.relationship ?? '');
-                              setManageEmergencyContactNo(emergency.contactNo ?? '');
-                              setManageEmergencyEmail(emergency.email ?? '');
-                              setManageSelectedMoodIds(user.mood ?? []);
-                              setManageSelectedStyleIds(user.style ?? []);
-                              setManageDialogOpen(true);
-                            }}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Edit className="h-4 w-4 text-white" />
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            onClick={() => handleRequestDelete(user.id, displayName)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Trash2 className="h-4 w-4 text-white" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                      <div className="font-medium text-gray-900">{displayName || '—'}</div>
+                      <div className="text-sm text-gray-600">{user.email}</div>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-500">
+                        {user.phone && <span>Phone: {user.phone}</span>}
+                        {user.dateOfBirth && <span>DOB: {formatDateOfBirth(user.dateOfBirth)}</span>}
+                        {user.gender && <span>{user.gender}</span>}
+                      </div>
+                      <div className="flex items-center gap-1.5 justify-end pt-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => {
+                            setManageUserId(user.id);
+                            setManageFirstName(user.firstName || '');
+                            setManageLastName(user.lastName || '');
+                            setManageEmail(user.email);
+                            setManagePhone(user.phone ?? '');
+                            const dob = user.dateOfBirth ?? '';
+                            if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+                              const [y, m, d] = dob.split('-');
+                              setManageDobYear(y);
+                              setManageDobMonth(m);
+                              setManageDobDay(d.replace(/^0+/, '') || d);
+                            } else {
+                              setManageDobDay('');
+                              setManageDobMonth('');
+                              setManageDobYear('');
+                            }
+                            setManageGender(user.gender ?? '');
+                            const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
+                            setManageEmergencyName(emergency.contactName ?? '');
+                            setManageEmergencyRelationship(emergency.relationship ?? '');
+                            setManageEmergencyContactNo(emergency.contactNo ?? '');
+                            setManageEmergencyEmail(emergency.email ?? '');
+                            setManageSelectedMoodIds(user.mood ?? []);
+                            setManageSelectedStyleIds(user.style ?? []);
+                            setManageDialogOpen(true);
+                          }}
+                          className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                          style={{ backgroundColor: '#06B3C4' }}
+                        >
+                          <Edit className="h-4 w-4 text-white" />
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => handleRequestDelete(user.id, displayName)}
+                          className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                          style={{ backgroundColor: '#06B3C4' }}
+                        >
+                          <Trash2 className="h-4 w-4 text-white" />
+                        </Button>
+                      </div>
+                    </div>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
-          {/* Pagination Controls */}
-          {totalPages > 1 && (
-            <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
-              <div className="text-sm text-gray-600">
-                Showing {startIndex + 1} to {Math.min(endIndex, filtered.length)} of {filtered.length} users
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                    // Show first page, last page, current page, and pages around current
-                    const showPage = page === 1 || 
-                                    page === totalPages || 
-                                    (page >= currentPage - 1 && page <= currentPage + 1);
-                    
-                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
-                                        (page === currentPage + 2 && currentPage < totalPages - 2);
-                    
-                    if (showEllipsis) {
-                      return <span key={page} className="px-2 text-gray-500">...</span>;
-                    }
-                    
-                    if (!showPage) return null;
-                    
-                    return (
-                      <Button
-                        key={page}
-                        variant="ghost"
-                        onClick={() => setCurrentPage(page)}
-                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
-                          currentPage === page
-                            ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
-                            : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
-                        }`}
-                        style={
-                          currentPage === page 
-                            ? { backgroundColor: '#06B3C4' } 
-                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
-                        }
-                      >
-                        {page}
-                      </Button>
-                    );
-                  })}
-                </div>
 
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+              {/* Desktop: table */}
+              <div className="hidden lg:block overflow-x-auto font-sans">
+                <table className="w-full font-sans">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Name
+                      </th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Email
+                      </th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Phone
+                      </th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Date of Birth
+                      </th>
+                      <th className="text-left py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Gender
+                      </th>
+                      <th className="text-right py-3 px-4 text-xs font-semibold text-gray-700 uppercase tracking-wide">
+                        Actions
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedUsers.map((user) => {
+                      const displayName = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email;
+                      return (
+                        <tr
+                          key={user.id}
+                          className="border-b hover:bg-gray-50 transition-colors"
+                          style={{ borderColor: '#EEF0F1' }}
+                        >
+                          <td className="py-3 px-4 text-sm text-gray-900 font-medium">
+                            {displayName || '—'}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-700">
+                            {user.email}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-700">
+                            {user.phone ?? '—'}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-700">
+                            {formatDateOfBirth(user.dateOfBirth)}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-gray-700">
+                            {user.gender ?? '—'}
+                          </td>
+                          <td className="py-3 px-6">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => {
+                                  setManageUserId(user.id);
+                                  setManageFirstName(user.firstName || '');
+                                  setManageLastName(user.lastName || '');
+                                  setManageEmail(user.email);
+                                  setManagePhone(user.phone ?? '');
+                                  const dob = user.dateOfBirth ?? '';
+                                  if (dob && /^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+                                    const [y, m, d] = dob.split('-');
+                                    setManageDobYear(y);
+                                    setManageDobMonth(m);
+                                    setManageDobDay(d.replace(/^0+/, '') || d);
+                                  } else {
+                                    setManageDobDay('');
+                                    setManageDobMonth('');
+                                    setManageDobYear('');
+                                  }
+                                  setManageGender(
+                                    user.gender
+                                      ? user.gender.charAt(0).toUpperCase() + user.gender.slice(1).toLowerCase()
+                                      : ''
+                                  );
+                                  const emergency = (user as TripUser).emergency ?? (user as { emergency?: { contactName?: string; relationship?: string; contactNo?: string; email?: string } }).emergency ?? {};
+                                  setManageEmergencyName(emergency.contactName ?? '');
+                                  setManageEmergencyRelationship(emergency.relationship ?? '');
+                                  setManageEmergencyContactNo(emergency.contactNo ?? '');
+                                  setManageEmergencyEmail(emergency.email ?? '');
+                                  setManageSelectedMoodIds(user.mood ?? []);
+                                  setManageSelectedStyleIds(user.style ?? []);
+                                  setManageDialogOpen(true);
+                                }}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Edit className="h-4 w-4 text-white" />
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                onClick={() => handleRequestDelete(user.id, displayName)}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Trash2 className="h-4 w-4 text-white" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-            </div>
-          )}
-          </>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="px-6 py-4 border-t flex items-center justify-between" style={{ borderColor: '#EEF0F1' }}>
+                  <div className="text-sm text-gray-600">
+                    Showing {startIndex + 1} to {Math.min(endIndex, filtered.length)} of {filtered.length} users
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                        // Show first page, last page, current page, and pages around current
+                        const showPage = page === 1 ||
+                          page === totalPages ||
+                          (page >= currentPage - 1 && page <= currentPage + 1);
+
+                        const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                          (page === currentPage + 2 && currentPage < totalPages - 2);
+
+                        if (showEllipsis) {
+                          return <span key={page} className="px-2 text-gray-500">...</span>;
+                        }
+
+                        if (!showPage) return null;
+
+                        return (
+                          <Button
+                            key={page}
+                            variant="ghost"
+                            onClick={() => setCurrentPage(page)}
+                            className={`h-8 min-w-8 px-2 text-sm border transition-colors ${currentPage === page
+                              ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                              : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                              }`}
+                            style={
+                              currentPage === page
+                                ? { backgroundColor: '#06B3C4' }
+                                : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                            }
+                          >
+                            {page}
+                          </Button>
+                        );
+                      })}
+                    </div>
+
+                    <Button
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{ backgroundColor: '#06B3C4' }}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           );
         })()}
       </div>
@@ -1212,11 +1197,11 @@ export function UsersPage() {
           }
         }}
       >
-  <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader className="text-center">
             <DialogTitle className="font-heading text-left">Edit User</DialogTitle>
             <DialogDescription className="mt-1 text-left">
-              Edit the user&apos;s details. Email is shown for reference and cannot be changed.
+              Edit the user&apos;s details. Email and phone number are shown for reference and cannot be changed.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-1">
@@ -1297,8 +1282,6 @@ export function UsersPage() {
                 <option value="">Select gender</option>
                 <option value="Male">Male</option>
                 <option value="Female">Female</option>
-                <option value="Other">Other</option>
-                <option value="Prefer not to say">Prefer not to say</option>
               </select>
             </div>
             <div className="space-y-2">
@@ -1329,17 +1312,17 @@ export function UsersPage() {
                           className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
                           style={selected
                             ? {
-                                backgroundColor: '#06B3C4',
-                                borderColor: '#06B3C4',
-                                borderStyle: 'solid',
-                                borderWidth: '1px',
-                              }
+                              backgroundColor: '#06B3C4',
+                              borderColor: '#06B3C4',
+                              borderStyle: 'solid',
+                              borderWidth: '1px',
+                            }
                             : {
-                                backgroundColor: '#ffffff',
-                                borderColor: '#06B3C4',
-                                borderStyle: 'dashed',
-                                borderWidth: '1px',
-                              }
+                              backgroundColor: '#ffffff',
+                              borderColor: '#06B3C4',
+                              borderStyle: 'dashed',
+                              borderWidth: '1px',
+                            }
                           }
                         >
                           {mood.icon ? (
@@ -1390,17 +1373,17 @@ export function UsersPage() {
                           className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm border transition-colors ${selected ? 'text-white' : 'text-[#06B3C4]'}`}
                           style={selected
                             ? {
-                                backgroundColor: '#06B3C4',
-                                borderColor: '#06B3C4',
-                                borderStyle: 'solid',
-                                borderWidth: '1px',
-                              }
+                              backgroundColor: '#06B3C4',
+                              borderColor: '#06B3C4',
+                              borderStyle: 'solid',
+                              borderWidth: '1px',
+                            }
                             : {
-                                backgroundColor: '#ffffff',
-                                borderColor: '#06B3C4',
-                                borderStyle: 'dashed',
-                                borderWidth: '1px',
-                              }
+                              backgroundColor: '#ffffff',
+                              borderColor: '#06B3C4',
+                              borderStyle: 'dashed',
+                              borderWidth: '1px',
+                            }
                           }
                         >
                           {style.icon ? (

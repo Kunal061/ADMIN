@@ -16,6 +16,19 @@ import { useState, useRef, useEffect } from 'react';
 import type { StyleOption } from '@/types';
 import { apiClient } from '@/lib/apiClient';
 
+const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
+
+const ACCEPTED_ICON_EXTENSIONS = ['.svg', '.jpg', '.jpeg', '.png'];
+const ACCEPTED_ICON_TYPES = ['image/svg+xml', 'image/jpeg', 'image/jpg', 'image/png'];
+const ACCEPTED_ICON_ACCEPT = '.svg,.jpg,.jpeg,.png,image/svg+xml,image/jpeg,image/jpg,image/png';
+
+const isValidIconFile = (file: File): boolean => {
+  const ext = file.name.toLowerCase().slice(file.name.lastIndexOf('.'));
+  const typeOk = ACCEPTED_ICON_TYPES.includes(file.type);
+  const extOk = ACCEPTED_ICON_EXTENSIONS.includes(ext);
+  return typeOk || extOk;
+};
+
 export function StylePage() {
   const { styles, showToast } = useApp();
   const [displayStyles, setDisplayStyles] = useState<StyleOption[]>(styles);
@@ -27,7 +40,7 @@ export function StylePage() {
   const [newStyleIconFile, setNewStyleIconFile] = useState<File | null>(null);
   const [newStyleIconPreview, setNewStyleIconPreview] = useState('');
   const [editStyleName, setEditStyleName] = useState('');
-  
+
   const [searchQuery, setSearchQuery] = useState('');
 
   // Pagination state
@@ -76,7 +89,7 @@ export function StylePage() {
 
   useEffect(() => {
     fetchStylesFromAPI();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Reset to page 1 when search query changes
@@ -324,11 +337,19 @@ export function StylePage() {
                     ref={addStyleIconInputRef}
                     id="add-style-icon"
                     type="file"
-                    accept="image/*"
+                    accept={ACCEPTED_ICON_ACCEPT}
                     className="visually-hidden-input"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
                       if (!file) return;
+                      if (!isValidIconFile(file)) {
+                        showToast('Please upload a valid image file (SVG, JPG, or PNG)', 'error');
+                        return;
+                      }
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        showToast('File size must be less than 5MB', 'error');
+                        return;
+                      }
                       const previewUrl = URL.createObjectURL(file);
                       setNewStyleIconPreview((prev) => {
                         if (prev) URL.revokeObjectURL(prev);
@@ -385,8 +406,8 @@ export function StylePage() {
           const filteredStyles = !query
             ? displayStyles
             : displayStyles.filter((style) =>
-                style.name.toLowerCase().includes(query)
-              );
+              style.name.toLowerCase().includes(query)
+            );
 
           // Pagination calculations
           const totalPages = Math.ceil(filteredStyles.length / ITEMS_PER_PAGE) || 1;
@@ -405,188 +426,187 @@ export function StylePage() {
               )}
             </div>
           ) : (
-          <>
-          {/* Mobile: card list */}
-          <div className="lg:hidden space-y-3 p-4">
-            {paginatedStyles.map((style) => (
-              <div
-                key={style.id}
-                className="flex items-center gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
-                style={{ borderColor: '#EEF0F1' }}
-              >
-                {style.icon ? (
-                  <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                    <img
-                      src={style.icon}
-                      alt={style.name}
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                ) : (
-                  <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0">
-                    <span className="text-gray-400 text-xs">—</span>
-                  </div>
-                )}
-                <div className="flex-1 min-w-0 font-medium text-gray-900">{style.name}</div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <Button
-                    size="sm"
-                    onClick={() => handleOpenManageDialog(style)}
-                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                    style={{ backgroundColor: '#06B3C4' }}
+            <>
+              {/* Mobile: card list */}
+              <div className="lg:hidden space-y-3 p-4">
+                {paginatedStyles.map((style) => (
+                  <div
+                    key={style.id}
+                    className="flex items-center gap-4 p-4 rounded-lg border hover:bg-gray-50 transition-colors"
+                    style={{ borderColor: '#EEF0F1' }}
                   >
-                    <Edit className="h-4 w-4 text-white" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => handleRequestDeleteStyle(String(style.id), style.name)}
-                    className="h-8 w-8 p-0 hover:opacity-90 border-0"
-                    style={{ backgroundColor: '#06B3C4' }}
-                  >
-                    <Trash2 className="h-4 w-4 text-white" />
-                  </Button>
-                </div>
+                    {style.icon ? (
+                      <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
+                        <img
+                          src={style.icon}
+                          alt={style.name}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-300 bg-gray-50 flex items-center justify-center shrink-0">
+                        <span className="text-gray-400 text-xs">—</span>
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0 font-medium text-gray-900">{style.name}</div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <Button
+                        size="sm"
+                        onClick={() => handleOpenManageDialog(style)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Edit className="h-4 w-4 text-white" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => handleRequestDeleteStyle(String(style.id), style.name)}
+                        className="h-8 w-8 p-0 hover:opacity-90 border-0"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Trash2 className="h-4 w-4 text-white" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
 
-          {/* Desktop: table */}
-          <div className="hidden lg:block overflow-x-auto">
-            <table className="w-full table-fixed">
-              <thead>
-                <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                  <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
-                  <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                  <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedStyles.map((style) => {
-                  return (
-                    <tr
-                      key={style.id}
-                      className="border-b transition-colors"
-                      style={{
-                        borderColor: '#EEF0F1',
-                      }}
-                    >
-                      <td className="w-[25%] py-4 px-6 text-left">
-                        <div className="font-medium text-gray-900">
-                          {style.name}
-                        </div>
-                      </td>
-                      <td className="w-[20%] py-4 px-6 text-left">
-                        <div className="flex items-center justify-start gap-3">
-                          {style.icon ? (
-                            <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
-                              <img
-                                src={style.icon}
-                                alt={style.name}
-                                className="w-full h-full object-cover"
+              {/* Desktop: table */}
+              <div className="hidden lg:block overflow-x-auto">
+                <table className="w-full table-fixed">
+                  <thead>
+                    <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
+                      <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
+                      <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
+                      <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginatedStyles.map((style) => {
+                      return (
+                        <tr
+                          key={style.id}
+                          className="border-b transition-colors"
+                          style={{
+                            borderColor: '#EEF0F1',
+                          }}
+                        >
+                          <td className="w-[25%] py-4 px-6 text-left">
+                            <div className="font-medium text-gray-900">
+                              {style.name}
+                            </div>
+                          </td>
+                          <td className="w-[20%] py-4 px-6 text-left">
+                            <div className="flex items-center justify-start gap-3">
+                              {style.icon ? (
+                                <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
+                                  <img
+                                    src={style.icon}
+                                    alt={style.name}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              ) : null}
+                              <input
+                                id={`style-icon-${style.id}`}
+                                type="file"
+                                accept="image/*"
+                                className="visually-hidden-input"
+                                onChange={(e) =>
+                                  handleIconUpload(style.id, e.target.files?.[0] || null)
+                                }
                               />
                             </div>
-                          ) : null}
-                          <input
-                            id={`style-icon-${style.id}`}
-                            type="file"
-                            accept="image/*"
-                            className="visually-hidden-input"
-                            onChange={(e) =>
-                              handleIconUpload(style.id, e.target.files?.[0] || null)
-                            }
-                          />
-                        </div>
-                      </td>
-                      <td className="w-[20%] py-3 px-6 text-right">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => handleOpenManageDialog(style)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Edit className="h-4 w-4 text-white" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleRequestDeleteStyle(String(style.id), style.name)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Trash2 className="h-4 w-4 text-white" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-            
-          {/* Pagination Controls */}
-          <div className="px-6 py-4 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F1' }}>
-              <div className="text-sm text-gray-600">
-                Showing {startIndex + 1} to {Math.min(endIndex, filteredStyles.length)} of {filteredStyles.length} styles
+                          </td>
+                          <td className="w-[20%] py-3 px-6 text-right">
+                            <div className="flex items-center gap-1.5 justify-end">
+                              <Button
+                                size="sm"
+                                onClick={() => handleOpenManageDialog(style)}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Edit className="h-4 w-4 text-white" />
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleRequestDeleteStyle(String(style.id), style.name)}
+                                className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                                style={{ backgroundColor: '#06B3C4' }}
+                              >
+                                <Trash2 className="h-4 w-4 text-white" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                  disabled={currentPage === 1}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </Button>
-                
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
-                    const showPage = page === 1 || 
-                                    page === totalPages || 
-                                    (page >= currentPage - 1 && page <= currentPage + 1);
-                    
-                    const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
-                                        (page === currentPage + 2 && currentPage < totalPages - 2);
-                    
-                    if (showEllipsis) {
-                      return <span key={page} className="px-2 text-gray-500">...</span>;
-                    }
-                    
-                    if (!showPage) return null;
-                    
-                    return (
-                      <Button
-                        key={page}
-                        variant="ghost"
-                        onClick={() => setCurrentPage(page)}
-                        className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
-                          currentPage === page
+
+              {/* Pagination Controls */}
+              <div className="px-6 py-4 border-t flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" style={{ borderColor: '#EEF0F1' }}>
+                <div className="text-sm text-gray-600">
+                  Showing {startIndex + 1} to {Math.min(endIndex, filteredStyles.length)} of {filteredStyles.length} styles
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                    disabled={currentPage === 1}
+                    className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => {
+                      const showPage = page === 1 ||
+                        page === totalPages ||
+                        (page >= currentPage - 1 && page <= currentPage + 1);
+
+                      const showEllipsis = (page === currentPage - 2 && currentPage > 3) ||
+                        (page === currentPage + 2 && currentPage < totalPages - 2);
+
+                      if (showEllipsis) {
+                        return <span key={page} className="px-2 text-gray-500">...</span>;
+                      }
+
+                      if (!showPage) return null;
+
+                      return (
+                        <Button
+                          key={page}
+                          variant="ghost"
+                          onClick={() => setCurrentPage(page)}
+                          className={`h-8 min-w-8 px-2 text-sm border transition-colors ${currentPage === page
                             ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
                             : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
-                        }`}
-                        style={
-                          currentPage === page 
-                            ? { backgroundColor: '#06B3C4' } 
-                            : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
-                        }
-                      >
-                        {page}
-                      </Button>
-                    );
-                  })}
-                </div>
+                            }`}
+                          style={
+                            currentPage === page
+                              ? { backgroundColor: '#06B3C4' }
+                              : { backgroundColor: '#FFFFFF', borderColor: '#D1D5DB' }
+                          }
+                        >
+                          {page}
+                        </Button>
+                      );
+                    })}
+                  </div>
 
-                <Button
-                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                  disabled={currentPage === totalPages}
-                  className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
+                  <Button
+                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                    disabled={currentPage === totalPages}
+                    className="h-8 w-8 p-0 text-white hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+                    style={{ backgroundColor: '#06B3C4' }}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </>
+            </>
           );
         })()}
       </div>
@@ -670,7 +690,7 @@ export function StylePage() {
                   placeholder="Enter style name"
                 />
               </div>
-              
+
               <div className="space-y-2">
                 <Label htmlFor="manage-style-icon">Icon</Label>
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
@@ -691,10 +711,25 @@ export function StylePage() {
                     ref={manageStyleIconInputRef}
                     id={`manage-icon-${activeActionStyle.id}`}
                     type="file"
-                    accept="image/*"
+                    accept={ACCEPTED_ICON_ACCEPT}
                     className="visually-hidden-input"
                     onChange={(e) => {
-                      handleManageIconUpload(e.target.files?.[0] || null);
+                      const file = e.target.files?.[0];
+                      if (!file) {
+                        e.target.value = '';
+                        return;
+                      }
+                      if (!isValidIconFile(file)) {
+                        showToast('Please upload a valid image file (SVG, JPG, or PNG)', 'error');
+                        e.target.value = '';
+                        return;
+                      }
+                      if (file.size > MAX_IMAGE_SIZE_BYTES) {
+                        showToast('File size must be less than 5MB', 'error');
+                        e.target.value = '';
+                        return;
+                      }
+                      handleManageIconUpload(file);
                       e.target.value = '';
                     }}
                   />

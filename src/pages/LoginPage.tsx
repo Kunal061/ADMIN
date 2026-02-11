@@ -210,7 +210,7 @@ export function LoginPage() {
 
           {forgotStep === 'requestOtp' && (
             <form onSubmit={handleSendOtp} className="space-y-6">
-              <p className="text-sm text-gray-600">Enter the email address for your account.</p>
+              <p className="text-sm text-gray-600 text-center">Enter the email address for your account.</p>
               <div className="space-y-2">
                 <Label htmlFor="forgot-email" className="text-gray-700 font-medium">Email</Label>
                 <div className="relative">
@@ -259,7 +259,7 @@ export function LoginPage() {
 
           {forgotStep === 'resetPassword' && (
             <form onSubmit={handleResetPassword} className="space-y-6">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 text-center">
                 Enter the OTP sent to <strong>{forgotEmail}</strong> and set your new password.
               </p>
               <div className="space-y-2">

@@ -54,6 +54,20 @@ const normalizeDateInput = (value?: string): string => {
   return parsed.toISOString().slice(0, 10);
 };
 
+// Helper function to format dates as DD-MM-YYYY
+const formatDateToDDMMYYYY = (dateString: string | undefined): string => {
+  if (!dateString) return '';
+  try {
+    const date = new Date(dateString);
+    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  } catch {
+    return dateString;
+  }
+};
+
 const normalizeTripType = (value?: string): Trip['type'] => {
   if (!value) return 'public';
   const normalized = value.toLowerCase().replace(/\s+/g, '-');
@@ -291,25 +305,25 @@ export function TripPage() {
         const list = data?.data?.data || data?.data || data || [];
         const mapped = Array.isArray(list)
           ? list.map((user: unknown) => {
-              const userRecord = user && typeof user === 'object' ? (user as Record<string, unknown>) : {};
-              const id = String(userRecord.id || userRecord._id || '');
-              const firstName = String(userRecord.firstName || '').trim();
-              const lastName = String(userRecord.lastName || '').trim();
-              const fullName = String(userRecord.fullName || '').trim();
-              const nameParts = fullName ? fullName.split(' ') : [];
-              const resolvedFirstName = firstName || nameParts[0] || '';
-              const resolvedLastName = lastName || nameParts.slice(1).join(' ') || '';
+            const userRecord = user && typeof user === 'object' ? (user as Record<string, unknown>) : {};
+            const id = String(userRecord.id || userRecord._id || '');
+            const firstName = String(userRecord.firstName || '').trim();
+            const lastName = String(userRecord.lastName || '').trim();
+            const fullName = String(userRecord.fullName || '').trim();
+            const nameParts = fullName ? fullName.split(' ') : [];
+            const resolvedFirstName = firstName || nameParts[0] || '';
+            const resolvedLastName = lastName || nameParts.slice(1).join(' ') || '';
 
-              return {
-                id,
-                firstName: resolvedFirstName,
-                lastName: resolvedLastName,
-                email: String(userRecord.emailAddress || userRecord.email || ''),
-                phone: typeof userRecord.mobileNo === 'string' ? userRecord.mobileNo : undefined,
-                dateOfBirth: typeof userRecord.dob === 'string' ? userRecord.dob : undefined,
-                gender: typeof userRecord.gender === 'string' ? userRecord.gender : undefined,
-              } as TripUser;
-            })
+            return {
+              id,
+              firstName: resolvedFirstName,
+              lastName: resolvedLastName,
+              email: String(userRecord.emailAddress || userRecord.email || ''),
+              phone: typeof userRecord.mobileNo === 'string' ? userRecord.mobileNo : undefined,
+              dateOfBirth: typeof userRecord.dob === 'string' ? userRecord.dob : undefined,
+              gender: typeof userRecord.gender === 'string' ? userRecord.gender : undefined,
+            } as TripUser;
+          })
             .filter(user => user.id)
           : [];
 
@@ -355,14 +369,14 @@ export function TripPage() {
         const list = moodsData?.data?.data || moodsData?.data || moodsData || [];
         const transformed = Array.isArray(list)
           ? list.map((mood: any) => ({
-              id: String(mood.id || mood._id),
-              name: mood.moodName || mood.name || '',
-              description: mood.description || '',
-              icon: mood.icon || mood.image || '',
-              image: mood.image || mood.icon || undefined,
-              isActive: mood.isActive ?? true,
-              moodImage: mood.moodImage || undefined,
-            }))
+            id: String(mood.id || mood._id),
+            name: mood.moodName || mood.name || '',
+            description: mood.description || '',
+            icon: mood.icon || mood.image || '',
+            image: mood.image || mood.icon || undefined,
+            isActive: mood.isActive ?? true,
+            moodImage: mood.moodImage || undefined,
+          }))
           : [];
         setApiMoods(transformed);
       }
@@ -371,12 +385,12 @@ export function TripPage() {
         const list = stylesData?.data?.data || stylesData?.data || stylesData || [];
         const transformed = Array.isArray(list)
           ? list.map((style: any) => ({
-              id: String(style.id || style._id),
-              name: style.styleName || style.name || '',
-              icon: style.icon || style.image || undefined,
-              image: style.image || style.icon || undefined,
-              isActive: style.isActive ?? true,
-            }))
+            id: String(style.id || style._id),
+            name: style.styleName || style.name || '',
+            icon: style.icon || style.image || undefined,
+            image: style.image || style.icon || undefined,
+            isActive: style.isActive ?? true,
+          }))
           : [];
         setApiStyles(transformed);
       }
@@ -526,15 +540,15 @@ export function TripPage() {
   const [editingDayWiseItinerary, setEditingDayWiseItinerary] = useState<
     { id: string; day: number; description: string }[]
   >([]);
-  
+
   // Mood selection state
   const [selectedMoods, setSelectedMoods] = useState<string[]>([]);
-  
+
   // Style selection state
   const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
   const [editingSelectedStyles, setEditingSelectedStyles] = useState<string[]>([]);
   const [editingSelectedMoods, setEditingSelectedMoods] = useState<string[]>([]);
-  
+
   // Places state
   const [places, setPlaces] = useState<Array<{ name: string; image: string; mapLink?: string }>>([]);
 
@@ -673,7 +687,7 @@ export function TripPage() {
       const mood = moodOptions.find(m => m.id === moodId);
       return mood && mood.isActive !== false;
     });
-    
+
     // Filter selected styles to only include active ones
     const activeSelectedStyles = selectedStyles.filter(styleId => {
       const style = styleOptions.find(s => s.id === styleId);
@@ -988,10 +1002,10 @@ export function TripPage() {
         prev.length > 0
           ? prev
           : (editingTrip.itinerary || []).map(day => ({
-              id: day.id,
-              day: day.day,
-              description: day.description || '',
-            }));
+            id: day.id,
+            day: day.day,
+            description: day.description || '',
+          }));
 
       const next: { id: string; day: number; description: string }[] = [];
       for (let day = 1; day <= daysCount; day++) {
@@ -1260,482 +1274,471 @@ export function TripPage() {
         }}
       >
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="font-heading">Create New Trip</DialogTitle>
-              <DialogDescription>
-                Fill in the details to create a new trip.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <span>Step {createTripStep} of 4</span>
-            </div>
+          <DialogHeader>
+            <DialogTitle className="font-heading">Create New Trip</DialogTitle>
+            <DialogDescription>
+              Fill in the details to create a new trip.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>Step {createTripStep} of 4</span>
+          </div>
 
-            {createTripStep === 1 && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="trip-title">
-                    Trip Title <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="trip-title"
-                    value={newTrip.title}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, title: e.target.value }))}
-                    placeholder="e.g., Mountain Adventure"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trip-destination">
-                    Destination <span className="text-red-500">*</span>
-                  </Label>
-                  <Input
-                    id="trip-destination"
-                    value={newTrip.destination}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, destination: e.target.value }))}
-                    placeholder="e.g., Swiss Alps"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="trip-description">Description <span className="text-red-500">*</span></Label>
-                  <Textarea
-                    id="trip-description"
-                    value={newTrip.description}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Describe the trip..."
-                  />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="trip-start">
-                      Start Date <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="trip-start"
-                      type="date"
-                      value={newTrip.startDate}
-                      onChange={(e) => setNewTrip(prev => ({ ...prev, startDate: e.target.value }))}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="trip-end">
-                      End Date <span className="text-red-500">*</span>
-                    </Label>
-                    <Input
-                      id="trip-end"
-                      type="date"
-                      value={newTrip.endDate}
-                      onChange={(e) => setNewTrip(prev => ({ ...prev, endDate: e.target.value }))}
-                      required
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="trip-type">Type <span className="text-red-500">*</span></Label>
-                    <select
-                      id="trip-type"
-                      value={newTrip.type}
-                      onChange={(e) => setNewTrip(prev => ({ ...prev, type: e.target.value as 'public' | 'private' | 'invite-only' }))}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="public">Public</option>
-                      <option value="private">Private</option>
-                      <option value="invite-only">Invite Only</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2 flex flex-col">
-                    <Label className="text-sm">Featured</Label>
-                    <div className="flex items-center gap-3 h-10">
-                      <input
-                        id="trip-featured"
-                        type="checkbox"
-                        checked={newTrip.isFeatured}
-                        onChange={(e) => setNewTrip(prev => ({ ...prev, isFeatured: e.target.checked }))}
-                        className="h-4 w-4 rounded border border-gray-300 bg-white checked:bg-white checked:border-gray-300 accent-[#06B3C4]"
-                      />
-                      <Label htmlFor="trip-featured" className="text-sm text-gray-600">Mark as featured</Label>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Participants */}
-                <div className="space-y-2 pt-4 border-t">
-                  <Label className="text-base font-semibold">Participants</Label>
-                  <p className="text-xs text-gray-500">Select users to add to this trip (from the Users page).</p>
-                  <Input
-                    type="text"
-                    placeholder="Search for Participants"
-                    value={newTripParticipantSearchQuery}
-                    onChange={(e) => setNewTripParticipantSearchQuery(e.target.value)}
-                    className="rounded-md border border-input"
-                  />
-                  <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
-                    {(() => {
-                      const users = apiTripUsers.length > 0 ? apiTripUsers : storage.getTripUsers();
-                      if (users.length === 0) {
-                        return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
-                      }
-                      const q = newTripParticipantSearchQuery.trim().toLowerCase();
-                      const filtered = q
-                        ? users.filter((u) => {
-                            const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
-                            return full.includes(q);
-                          })
-                        : users;
-                      if (filtered.length === 0) {
-                        return <p className="text-sm text-gray-500">No participants match your search.</p>;
-                      }
-                      return filtered.map((u) => {
-                        const isSelected = (newTrip.participantIds ?? []).includes(u.id);
-                        return (
-                          <label
-                            key={u.id}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
-                                : 'border-input bg-background hover:bg-gray-50'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isSelected}
-                              onChange={() => {
-                                setNewTrip(prev => ({
-                                  ...prev,
-                                  participantIds: isSelected
-                                    ? (prev.participantIds ?? []).filter(id => id !== u.id)
-                                    : [...(prev.participantIds ?? []), u.id],
-                                }));
-                              }}
-                              className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
-                            />
-                            <span>{u.firstName} {u.lastName}</span>
-                          </label>
-                        );
-                      });
-                    })()}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {createTripStep === 2 && (
-              <div className="py-8">
-                <input
-                  id="trip-image"
-                  ref={coverInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => handleCoverImageUpload(e.target.files?.[0] || null)}
+          {createTripStep === 1 && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="trip-title">
+                  Trip Title <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="trip-title"
+                  value={newTrip.title}
+                  onChange={(e) => setNewTrip(prev => ({ ...prev, title: e.target.value }))}
+                  placeholder="e.g., Mountain Adventure"
+                  required
                 />
-                <div className="flex items-center justify-center">
-                  <div className="w-full max-w-md">
-                    <div className="aspect-square w-full overflow-hidden rounded-3xl bg-gray-200/50 flex items-center justify-center shadow-sm">
-                      {newTrip.coverImage ? (
-                        <img
-                          src={newTrip.coverImage}
-                          alt="Trip cover"
-                          className="h-full w-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src="/gallery-icon.png"
-                          alt="Upload cover photo"
-                          className="h-24 w-24 object-contain opacity-60"
-                        />
-                      )}
-                    </div>
-                    <div className="mt-5 flex items-center justify-center gap-3">
-                      <Button
-                        type="button"
-                        className="text-white border-0 hover:opacity-90 rounded-full px-5"
-                        style={{ backgroundColor: '#06B3C4' }}
-                        onClick={() => coverInputRef.current?.click()}
-                        disabled={createCoverUploadLoading}
-                      >
-                        {createCoverUploadLoading ? 'Uploading...' : newTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
-                      </Button>
-                      {newTrip.coverImage ? (
-                        <button
-                          type="button"
-                          onClick={handleClearCoverImage}
-                          className="h-10 w-10 rounded-full text-white flex items-center justify-center hover:opacity-90"
-                          style={{ backgroundColor: '#06B3C4' }}
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="trip-destination">
+                  Destination <span className="text-red-500">*</span>
+                </Label>
+                <Input
+                  id="trip-destination"
+                  value={newTrip.destination}
+                  onChange={(e) => setNewTrip(prev => ({ ...prev, destination: e.target.value }))}
+                  placeholder="e.g., Swiss Alps"
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="trip-description">Description <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="trip-description"
+                  value={newTrip.description}
+                  onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Describe the trip..."
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="trip-start">
+                    Start Date <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="trip-start"
+                    type="date"
+                    value={newTrip.startDate}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, startDate: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="trip-end">
+                    End Date <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="trip-end"
+                    type="date"
+                    value={newTrip.endDate}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, endDate: e.target.value }))}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="trip-type">Type <span className="text-red-500">*</span></Label>
+                  <select
+                    id="trip-type"
+                    value={newTrip.type}
+                    onChange={(e) => setNewTrip(prev => ({ ...prev, type: e.target.value as 'public' | 'private' | 'invite-only' }))}
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="public">Public</option>
+                    <option value="private">Private</option>
+                    <option value="invite-only">Invite Only</option>
+                  </select>
+                </div>
+                <div className="space-y-2 flex flex-col">
+                  <Label className="text-sm">Featured</Label>
+                  <div className="flex items-center gap-3 h-10">
+                    <input
+                      id="trip-featured"
+                      type="checkbox"
+                      checked={newTrip.isFeatured}
+                      onChange={(e) => setNewTrip(prev => ({ ...prev, isFeatured: e.target.checked }))}
+                      className="h-4 w-4 rounded border border-gray-300 bg-white checked:bg-white checked:border-gray-300 accent-[#06B3C4]"
+                    />
+                    <Label htmlFor="trip-featured" className="text-sm text-gray-600">Mark as featured</Label>
+                  </div>
+                </div>
+              </div>
+
+              {/* Participants */}
+              <div className="space-y-2 pt-4 border-t">
+                <Label className="text-base font-semibold">Participants</Label>
+                <p className="text-xs text-gray-500">Select users to add to this trip (from the Users page).</p>
+                <Input
+                  type="text"
+                  placeholder="Search for Participants"
+                  value={newTripParticipantSearchQuery}
+                  onChange={(e) => setNewTripParticipantSearchQuery(e.target.value)}
+                  className="rounded-md border border-input"
+                />
+                <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto py-2">
+                  {(() => {
+                    const users = apiTripUsers.length > 0 ? apiTripUsers : storage.getTripUsers();
+                    if (users.length === 0) {
+                      return <p className="text-sm text-gray-500">No users yet. Add users on the Users page first.</p>;
+                    }
+                    const q = newTripParticipantSearchQuery.trim().toLowerCase();
+                    const filtered = q
+                      ? users.filter((u) => {
+                        const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
+                        return full.includes(q);
+                      })
+                      : users;
+                    if (filtered.length === 0) {
+                      return <p className="text-sm text-gray-500">No participants match your search.</p>;
+                    }
+                    return filtered.map((u) => {
+                      const isSelected = (newTrip.participantIds ?? []).includes(u.id);
+                      return (
+                        <label
+                          key={u.id}
+                          className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${isSelected
+                            ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
+                            : 'border-input bg-background hover:bg-gray-50'
+                            }`}
                         >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      ) : null}
-                    </div>
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => {
+                              setNewTrip(prev => ({
+                                ...prev,
+                                participantIds: isSelected
+                                  ? (prev.participantIds ?? []).filter(id => id !== u.id)
+                                  : [...(prev.participantIds ?? []), u.id],
+                              }));
+                            }}
+                            className={`rounded border-input accent-[#06B3C4] ${!isSelected ? 'opacity-0' : ''}`}
+                          />
+                          <span>{u.firstName} {u.lastName}</span>
+                        </label>
+                      );
+                    });
+                  })()}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {createTripStep === 2 && (
+            <div className="py-8">
+              <input
+                id="trip-image"
+                ref={coverInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => handleCoverImageUpload(e.target.files?.[0] || null)}
+              />
+              <div className="flex items-center justify-center">
+                <div className="w-full max-w-md">
+                  <div className="aspect-square w-full overflow-hidden rounded-3xl bg-gray-200/50 flex items-center justify-center shadow-sm">
+                    {newTrip.coverImage ? (
+                      <img
+                        src={newTrip.coverImage}
+                        alt="Trip cover"
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src="/gallery-icon.png"
+                        alt="Upload cover photo"
+                        className="h-24 w-24 object-contain opacity-60"
+                      />
+                    )}
+                  </div>
+                  <div className="mt-5 flex items-center justify-center gap-3">
+                    <Button
+                      type="button"
+                      className="text-white border-0 hover:opacity-90 rounded-full px-5"
+                      style={{ backgroundColor: '#06B3C4' }}
+                      onClick={() => coverInputRef.current?.click()}
+                      disabled={createCoverUploadLoading}
+                    >
+                      {createCoverUploadLoading ? 'Uploading...' : newTrip.coverImage ? 'Replace Photo' : 'Upload Photo'}
+                    </Button>
+                    {newTrip.coverImage ? (
+                      <button
+                        type="button"
+                        onClick={handleClearCoverImage}
+                        className="h-10 w-10 rounded-full text-white flex items-center justify-center hover:opacity-90"
+                        style={{ backgroundColor: '#06B3C4' }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    ) : null}
                   </div>
                 </div>
               </div>
-            )}
+            </div>
+          )}
 
-            {createTripStep === 3 && (
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Overview Name</Label>
-                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
-                    {newTrip.title.trim() || '—'}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label>Overview Type</Label>
-                  <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
-                    {newTrip.destination?.trim() || 'adventure'}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="overview-summary">Summary <span className="text-red-500">*</span></Label>
-                  <Textarea
-                    id="overview-summary"
-                    value={newTrip.description}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
-                    placeholder="Describe the trip..."
-                    rows={4}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="overview-notes">Notes <span className="text-red-500">*</span></Label>
-                  <Textarea
-                    id="overview-notes"
-                    value={newTrip.overviewNotes}
-                    onChange={(e) => setNewTrip(prev => ({ ...prev, overviewNotes: e.target.value }))}
-                    placeholder="Visa info, tips, etc."
-                    rows={3}
-                  />
+          {createTripStep === 3 && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Overview Name</Label>
+                <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  {newTrip.title.trim() || '—'}
                 </div>
               </div>
-            )}
+              <div className="space-y-2">
+                <Label>Overview Type</Label>
+                <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
+                  {newTrip.destination?.trim() || 'adventure'}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="overview-summary">Summary <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="overview-summary"
+                  value={newTrip.description}
+                  onChange={(e) => setNewTrip(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Describe the trip..."
+                  rows={4}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="overview-notes">Notes <span className="text-red-500">*</span></Label>
+                <Textarea
+                  id="overview-notes"
+                  value={newTrip.overviewNotes}
+                  onChange={(e) => setNewTrip(prev => ({ ...prev, overviewNotes: e.target.value }))}
+                  placeholder="Visa info, tips, etc."
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
 
-            {createTripStep === 4 && (
-              <div className="space-y-4 py-4">
-                {/* Itinerary Section */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <Label className="text-base font-semibold">Itinerary</Label>
-                  </div>
-                  {dayWiseItinerary.length === 0 ? (
-                    <p className="text-sm text-gray-500">
-                      Select a start and end date to generate day-wise itinerary fields.
-                    </p>
-                  ) : (
-                    <div className="space-y-4">
-                      {dayWiseItinerary.map((day) => {
-                        const getDisplayDate = () => {
-                          if (!newTrip.startDate) return null;
-                          const start = new Date(newTrip.startDate);
-                          if (isNaN(start.getTime())) return null;
-                          const d = new Date(start);
-                          d.setDate(start.getDate() + (day.day - 1));
-                          return d.toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          });
-                        };
+          {createTripStep === 4 && (
+            <div className="space-y-4 py-4">
+              {/* Itinerary Section */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <Label className="text-base font-semibold">Itinerary</Label>
+                </div>
+                {dayWiseItinerary.length === 0 ? (
+                  <p className="text-sm text-gray-500">
+                    Select a start and end date to generate day-wise itinerary fields.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {dayWiseItinerary.map((day) => {
+                      const getDisplayDate = () => {
+                        if (!newTrip.startDate) return null;
+                        const start = new Date(newTrip.startDate);
+                        if (isNaN(start.getTime())) return null;
+                        const d = new Date(start);
+                        d.setDate(start.getDate() + (day.day - 1));
+                        return d.toLocaleDateString('en-GB', {
+                          day: '2-digit',
+                          month: 'short',
+                          year: 'numeric',
+                        });
+                      };
 
-                        const displayDate = getDisplayDate();
+                      const displayDate = getDisplayDate();
 
-                        return (
-                          <div key={day.id} className="space-y-2">
-                            <div className="flex items-baseline justify-between">
-                              <p className="font-semibold text-gray-900 font-heading">
-                                Day {day.day}
-                                {displayDate ? (
-                                  <span className="ml-2 text-sm font-normal text-gray-500">
-                                    {displayDate}
-                                  </span>
-                                ) : null}
-                              </p>
-                            </div>
-                            <Textarea
-                              value={day.description}
-                              onChange={(e) =>
-                                setDayWiseItinerary((prev) =>
-                                  prev.map((d) =>
-                                    d.day === day.day ? { ...d, description: e.target.value } : d
-                                  )
-                                )
-                              }
-                              placeholder={`Enter itinerary details for Day ${day.day}...`}
-                              rows={4}
-                              className="resize-y"
-                            />
+                      return (
+                        <div key={day.id} className="space-y-2">
+                          <div className="flex items-baseline justify-between">
+                            <p className="font-semibold text-gray-900 font-heading">
+                              Day {day.day}
+                              {displayDate ? (
+                                <span className="ml-2 text-sm font-normal text-gray-500">
+                                  {displayDate}
+                                </span>
+                              ) : null}
+                            </p>
                           </div>
+                          <Textarea
+                            value={day.description}
+                            onChange={(e) =>
+                              setDayWiseItinerary((prev) =>
+                                prev.map((d) =>
+                                  d.day === day.day ? { ...d, description: e.target.value } : d
+                                )
+                              )
+                            }
+                            placeholder={`Enter itinerary details for Day ${day.day}...`}
+                            rows={4}
+                            className="resize-y"
+                          />
+                        </div>
+                      );
+                    })}
+                    <p className="text-xs text-gray-500">
+                      Days are generated automatically based on the selected start and end dates.
+                      Updating the dates will update the days while keeping existing text where possible.
+                    </p>
+                  </div>
+                )}
+              </div>
+              {/* Mood Selection Section */}
+              <div className="space-y-4 pt-2">
+                <Label className="text-base font-semibold">Best for Mood</Label>
+                <div className="flex flex-wrap gap-2">
+                  {moodOptions.filter(mood => mood.isActive !== false).length === 0 ? (
+                    <p className="text-sm text-gray-500">No moods available yet.</p>
+                  ) : (
+                    moodOptions
+                      .filter(mood => mood.isActive !== false)
+                      .map((mood) => {
+                        const isSelected = selectedMoods.includes(mood.id);
+                        return (
+                          <button
+                            key={mood.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedMoods(prev =>
+                                prev.includes(mood.id)
+                                  ? prev.filter(id => id !== mood.id)
+                                  : [...prev, mood.id]
+                              );
+                            }}
+                            className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${isSelected ? 'text-white' : 'text-[#06B3C4]'
+                              }`}
+                            style={isSelected
+                              ? {
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
+                              : {
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
+                            }
+                          >
+                            {mood.image ? (
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                <img
+                                  src={mood.image}
+                                  alt={mood.name}
+                                  className="w-6 h-6 rounded-full object-cover"
+                                />
+                              </span>
+                            ) : mood.icon ? (
+                              <span>{mood.icon}</span>
+                            ) : null}
+                            <span>{mood.name}</span>
+                          </button>
                         );
-                      })}
-                      <p className="text-xs text-gray-500">
-                        Days are generated automatically based on the selected start and end dates.
-                        Updating the dates will update the days while keeping existing text where possible.
-                      </p>
-                    </div>
+                      })
                   )}
                 </div>
-                {/* Mood Selection Section */}
-                <div className="space-y-4 pt-2">
-                  <Label className="text-base font-semibold">Best for Mood</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {moodOptions.filter(mood => mood.isActive !== false).length === 0 ? (
-                      <p className="text-sm text-gray-500">No moods available yet.</p>
-                    ) : (
-                      moodOptions
-                        .filter(mood => mood.isActive !== false)
-                        .map((mood) => {
-                          const isSelected = selectedMoods.includes(mood.id);
-                          return (
-                            <button
-                              key={mood.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedMoods(prev =>
-                                  prev.includes(mood.id)
-                                    ? prev.filter(id => id !== mood.id)
-                                    : [...prev, mood.id]
-                                );
-                              }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
-                                isSelected ? 'text-white' : 'text-[#06B3C4]'
-                              }`}
-                              style={isSelected
-                                ? {
-                                    backgroundColor: '#06B3C4',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
-                                : {
-                                    backgroundColor: '#ffffff',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
-                              }
-                            >
-                              {mood.image ? (
-                                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                  <img
-                                    src={mood.image}
-                                    alt={mood.name}
-                                    className="w-6 h-6 rounded-full object-cover"
-                                  />
-                                </span>
-                              ) : mood.icon ? (
-                                <span>{mood.icon}</span>
-                              ) : null}
-                              <span>{mood.name}</span>
-                            </button>
-                          );
-                        })
-                    )}
-                  </div>
-                </div>
+              </div>
 
-                {/* Style Selection Section */}
-                <div className="space-y-4 pt-4 border-t">
-                  <Label className="text-base font-semibold">Best for Style</Label>
-                  <div className="flex flex-wrap gap-2">
-                    {styleOptions.filter(isStyleActive).length === 0 ? (
-                      <p className="text-sm text-gray-500">No styles available yet.</p>
-                    ) : (
-                      styleOptions
-                        .filter(isStyleActive)
-                        .map((style) => {
-                          const isSelected = selectedStyles.includes(style.id);
-                          return (
-                            <button
-                              key={style.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedStyles(prev =>
-                                  prev.includes(style.id)
-                                    ? prev.filter(id => id !== style.id)
-                                    : [...prev, style.id]
-                                );
-                              }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
-                                isSelected ? 'text-white' : 'text-[#06B3C4]'
+              {/* Style Selection Section */}
+              <div className="space-y-4 pt-4 border-t">
+                <Label className="text-base font-semibold">Best for Style</Label>
+                <div className="flex flex-wrap gap-2">
+                  {styleOptions.filter(isStyleActive).length === 0 ? (
+                    <p className="text-sm text-gray-500">No styles available yet.</p>
+                  ) : (
+                    styleOptions
+                      .filter(isStyleActive)
+                      .map((style) => {
+                        const isSelected = selectedStyles.includes(style.id);
+                        return (
+                          <button
+                            key={style.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedStyles(prev =>
+                                prev.includes(style.id)
+                                  ? prev.filter(id => id !== style.id)
+                                  : [...prev, style.id]
+                              );
+                            }}
+                            className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${isSelected ? 'text-white' : 'text-[#06B3C4]'
                               }`}
-                              style={isSelected
-                                ? {
-                                    backgroundColor: '#06B3C4',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
-                                : {
-                                    backgroundColor: '#ffffff',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
+                            style={isSelected
+                              ? {
+                                backgroundColor: '#06B3C4',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
                               }
-                            >
-                              {style.image ? (
-                                <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
-                                  <img
-                                    src={style.image}
-                                    alt={style.name}
-                                    className="w-6 h-6 rounded-full object-cover"
-                                  />
-                                </span>
-                              ) : style.icon ? (
-                                <span>{style.icon}</span>
-                              ) : null}
-                              <span>{style.name}</span>
-                            </button>
-                          );
-                        })
-                    )}
-                  </div>
+                              : {
+                                backgroundColor: '#ffffff',
+                                borderColor: '#06B3C4',
+                                borderStyle: 'dashed',
+                                borderWidth: '1px',
+                              }
+                            }
+                          >
+                            {style.image ? (
+                              <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-white">
+                                <img
+                                  src={style.image}
+                                  alt={style.name}
+                                  className="w-6 h-6 rounded-full object-cover"
+                                />
+                              </span>
+                            ) : style.icon ? (
+                              <span>{style.icon}</span>
+                            ) : null}
+                            <span>{style.name}</span>
+                          </button>
+                        );
+                      })
+                  )}
                 </div>
               </div>
-            )}
-            <DialogFooter className="flex justify-end gap-2">
+            </div>
+          )}
+          <DialogFooter className="flex justify-end gap-2">
+            {createTripStep > 1 && (
               <Button
                 type="button"
-                onClick={() => setTripDialogOpen(false)}
+                onClick={() => setCreateTripStep((step) => Math.max(1, step - 1))}
                 className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
                 style={{ backgroundColor: '#06B3C4' }}
               >
-                Cancel
+                Back
               </Button>
-              {createTripStep > 1 && (
-                <Button
-                  type="button"
-                  onClick={() => setCreateTripStep((step) => Math.max(1, step - 1))}
-                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  Back
-                </Button>
-              )}
-              {createTripStep < 4 ? (
-                <Button
-                  type="button"
-                  onClick={handleCreateTripStepContinue}
-                  disabled={createTripStepLoading || createCoverUploadLoading || (createTripStep === 1 && (!newTrip.title?.trim() || !newTrip.destination?.trim() || !newTrip.description?.trim() || !newTrip.type?.trim() || !newTrip.startDate || !newTrip.endDate)) || (createTripStep === 2 && !newTrip.coverImage) || (createTripStep === 3 && (!newTrip.description?.trim() || !newTrip.overviewNotes?.trim()))}
-                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  {createTripStepLoading || createCoverUploadLoading ? 'Saving...' : 'Continue'}
-                </Button>
-              ) : (
-                <Button
-                  type="button"
-                  onClick={handleCreateTrip}
-                  className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                  style={{ backgroundColor: '#06B3C4' }}
-                >
-                  Create Trip
-                </Button>
-              )}
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            )}
+            {createTripStep < 4 ? (
+              <Button
+                type="button"
+                onClick={handleCreateTripStepContinue}
+                disabled={createTripStepLoading || createCoverUploadLoading || (createTripStep === 1 && (!newTrip.title?.trim() || !newTrip.destination?.trim() || !newTrip.description?.trim() || !newTrip.type?.trim() || !newTrip.startDate || !newTrip.endDate)) || (createTripStep === 2 && !newTrip.coverImage) || (createTripStep === 3 && (!newTrip.description?.trim() || !newTrip.overviewNotes?.trim()))}
+                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                style={{ backgroundColor: '#06B3C4' }}
+              >
+                {createTripStepLoading || createCoverUploadLoading ? 'Saving...' : 'Continue'}
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                onClick={handleCreateTrip}
+                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
+                style={{ backgroundColor: '#06B3C4' }}
+              >
+                Create Trip
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Search Box + Add New */}
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between lg:gap-4">
@@ -1818,18 +1821,16 @@ export function TripPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 truncate">{trip.title}</div>
-                      <div className="text-xs text-gray-600 mt-0.5">
-                        {new Date(trip.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        {' - '}
-                        {new Date(trip.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Calendar className="h-4 w-4" />
+                        {formatDateToDDMMYYYY(trip.startDate)} - {formatDateToDDMMYYYY(trip.endDate)}
                       </div>
-                      <span className={`inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
-                        trip.type === 'private'
-                          ? 'bg-purple-100 text-purple-800'
-                          : trip.type === 'invite-only'
+                      <span className={`inline-flex items-center mt-2 px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${trip.type === 'private'
+                        ? 'bg-purple-100 text-purple-800'
+                        : trip.type === 'invite-only'
                           ? 'bg-orange-100 text-orange-800'
                           : 'bg-green-100 text-green-800'
-                      }`}>
+                        }`}>
                         {trip.type || 'public'}
                       </span>
                     </div>
@@ -1870,76 +1871,67 @@ export function TripPage() {
                   </thead>
                   <tbody>
                     {paginatedTrips.map((trip) => (
-                    <tr key={trip.id} className="border-b hover:bg-gray-50 transition-colors" style={{ borderColor: '#EEF0F1' }}>
-                      <td className="py-3 px-4">
-                        <div className="font-medium text-gray-900">
-                          {trip.title}
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-sm text-gray-700">
-                          {new Date(trip.startDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric', 
-                            year: 'numeric' 
-                          })}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="text-sm text-gray-700">
-                          {new Date(trip.endDate).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            day: 'numeric', 
-                            year: 'numeric' 
-                          })}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
-                          trip.type === 'private' 
-                            ? 'bg-purple-100 text-purple-800' 
+                      <tr key={trip.id} className="border-b hover:bg-gray-50 transition-colors" style={{ borderColor: '#EEF0F1' }}>
+                        <td className="py-3 px-4">
+                          <div className="font-medium text-gray-900">
+                            {trip.title}
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-sm text-gray-700">
+                            {formatDateToDDMMYYYY(trip.startDate)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className="text-sm text-gray-700">
+                            {formatDateToDDMMYYYY(trip.endDate)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${trip.type === 'private'
+                            ? 'bg-purple-100 text-purple-800'
                             : trip.type === 'invite-only'
-                            ? 'bg-orange-100 text-orange-800'
-                            : 'bg-green-100 text-green-800'
-                        }`}>
-                          {trip.type || 'public'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4">
-                        {trip.coverImage ? (
-                          <img
-                            src={trip.coverImage}
-                            alt={trip.title}
-                            className="w-14 h-10 object-cover rounded"
-                            onError={(e) => {
-                              e.currentTarget.style.display = 'none';
-                              const fallback = e.currentTarget.nextElementSibling as HTMLElement;
-                              if (fallback) fallback.style.display = 'inline';
-                            }}
-                          />
-                        ) : null}
-                      </td>
-                      <td className="py-3 px-6">
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <Button
-                            size="sm"
-                            onClick={() => handleEditTrip(trip)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Edit className="h-4 w-4 text-white" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            onClick={() => handleRequestDeleteTrip(trip)}
-                            className="h-7 w-7 p-0 hover:opacity-90 border-0"
-                            style={{ backgroundColor: '#06B3C4' }}
-                          >
-                            <Trash2 className="h-4 w-4 text-white" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
+                              ? 'bg-orange-100 text-orange-800'
+                              : 'bg-green-100 text-green-800'
+                            }`}>
+                            {trip.type || 'public'}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {trip.coverImage ? (
+                            <img
+                              src={trip.coverImage}
+                              alt={trip.title}
+                              className="w-14 h-10 object-cover rounded"
+                              onError={(e) => {
+                                e.currentTarget.style.display = 'none';
+                                const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                                if (fallback) fallback.style.display = 'inline';
+                              }}
+                            />
+                          ) : null}
+                        </td>
+                        <td className="py-3 px-6">
+                          <div className="flex items-center gap-1.5 justify-end">
+                            <Button
+                              size="sm"
+                              onClick={() => handleEditTrip(trip)}
+                              className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                              style={{ backgroundColor: '#06B3C4' }}
+                            >
+                              <Edit className="h-4 w-4 text-white" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => handleRequestDeleteTrip(trip)}
+                              className="h-7 w-7 p-0 hover:opacity-90 border-0"
+                              style={{ backgroundColor: '#06B3C4' }}
+                            >
+                              <Trash2 className="h-4 w-4 text-white" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
                     ))}
                   </tbody>
                 </table>
@@ -1974,11 +1966,10 @@ export function TripPage() {
                             key={page}
                             variant="ghost"
                             onClick={() => setCurrentPage(page)}
-                            className={`h-8 min-w-8 px-2 text-sm border transition-colors ${
-                              currentPage === page
-                                ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
-                                : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
-                            }`}
+                            className={`h-8 min-w-8 px-2 text-sm border transition-colors ${currentPage === page
+                              ? 'text-white font-semibold border-transparent hover:bg-[#06B3C4]'
+                              : 'text-gray-700 bg-white border-gray-300 hover:border-[#06B3C4] hover:text-[#06B3C4] hover:bg-white'
+                              }`}
                             style={
                               currentPage === page
                                 ? { backgroundColor: '#06B3C4' }
@@ -2030,9 +2021,9 @@ export function TripPage() {
                       {selectedTrip.destination}
                     </span>
                     <span className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      {selectedTrip.startDate} - {selectedTrip.endDate}
-                    </span>
+                      <p className="text-sm text-gray-600">
+                        {formatDateToDDMMYYYY(selectedTrip.startDate)} - {formatDateToDDMMYYYY(selectedTrip.endDate)}
+                      </p></span>
                   </div>
                 </div>
               </div>
@@ -2216,11 +2207,11 @@ export function TripPage() {
               )}
             </div>
             <DialogFooter>
-      <Button
-        onClick={() => setSelectedTrip(null)}
-        className="text-white hover:opacity-90 border-0 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2"
-        style={{ backgroundColor: '#03A9F4' }}
-      >
+              <Button
+                onClick={() => setSelectedTrip(null)}
+                className="text-white hover:opacity-90 border-0 font-medium focus:outline-none focus:ring-2 focus:ring-offset-2"
+                style={{ backgroundColor: '#03A9F4' }}
+              >
                 Close
               </Button>
             </DialogFooter>
@@ -2349,9 +2340,9 @@ export function TripPage() {
                       const q = editParticipantSearchQuery.trim().toLowerCase();
                       const filtered = q
                         ? users.filter((u) => {
-                            const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
-                            return full.includes(q);
-                          })
+                          const full = `${(u.firstName ?? '').trim()} ${(u.lastName ?? '').trim()}`.toLowerCase();
+                          return full.includes(q);
+                        })
                         : users;
                       if (filtered.length === 0) {
                         return <p className="text-sm text-gray-500">No participants match your search.</p>;
@@ -2362,11 +2353,10 @@ export function TripPage() {
                         return (
                           <label
                             key={u.id}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
-                                : 'border-input bg-background hover:bg-gray-50'
-                            }`}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md border text-sm cursor-pointer transition-colors ${isSelected
+                              ? 'border-[#06B3C4] bg-[#06B3C4] text-white hover:bg-[#05a0af] hover:border-[#05a0af]'
+                              : 'border-input bg-background hover:bg-gray-50'
+                              }`}
                           >
                             <input
                               type="checkbox"
@@ -2573,22 +2563,21 @@ export function TripPage() {
                                     : [...prev, mood.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
-                                isSelected ? 'text-white' : 'text-[#06B3C4]'
-                              }`}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${isSelected ? 'text-white' : 'text-[#06B3C4]'
+                                }`}
                               style={isSelected
                                 ? {
-                                    backgroundColor: '#06B3C4',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
+                                  backgroundColor: '#06B3C4',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
                                 : {
-                                    backgroundColor: '#ffffff',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
+                                  backgroundColor: '#ffffff',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
                               }
                             >
                               {mood.image ? (
@@ -2632,22 +2621,21 @@ export function TripPage() {
                                     : [...prev, style.id]
                                 );
                               }}
-                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${
-                                isSelected ? 'text-white' : 'text-[#06B3C4]'
-                              }`}
+                              className={`px-4 py-2 rounded-full text-sm font-medium border border-dashed flex items-center gap-2 transition-colors ${isSelected ? 'text-white' : 'text-[#06B3C4]'
+                                }`}
                               style={isSelected
                                 ? {
-                                    backgroundColor: '#06B3C4',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
+                                  backgroundColor: '#06B3C4',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
                                 : {
-                                    backgroundColor: '#ffffff',
-                                    borderColor: '#06B3C4',
-                                    borderStyle: 'dashed',
-                                    borderWidth: '1px',
-                                  }
+                                  backgroundColor: '#ffffff',
+                                  borderColor: '#06B3C4',
+                                  borderStyle: 'dashed',
+                                  borderWidth: '1px',
+                                }
                               }
                             >
                               {style.image ? (
@@ -2671,16 +2659,6 @@ export function TripPage() {
               </div>
             )}
             <DialogFooter className="flex justify-end gap-2">
-              <Button
-                onClick={() => {
-                  setEditTripDialogOpen(false);
-                  setEditingTrip(null);
-                }}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
               {editTripStep > 1 && (
                 <Button
                   type="button"
