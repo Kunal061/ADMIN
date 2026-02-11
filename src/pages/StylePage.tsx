@@ -15,6 +15,7 @@ import { Label } from '@/components/ui/label';
 import { useState, useRef, useEffect } from 'react';
 import type { StyleOption } from '@/types';
 import { apiClient } from '@/lib/apiClient';
+import { S3Image } from '@/components/ui/S3Image';
 
 const MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB
 
@@ -67,15 +68,7 @@ export function StylePage() {
     let iconUrl = style.icon || '';
     let imageUrl = style.image || '';
 
-    // Workaround for S3 SVG MIME type issue in local development
-    if (import.meta.env.DEV) {
-      if (iconUrl && iconUrl.includes('roamania.s3.ap-south-1.amazonaws.com') && iconUrl.toLowerCase().includes('.svg')) {
-        iconUrl = iconUrl.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
-      }
-      if (imageUrl && imageUrl.includes('roamania.s3.ap-south-1.amazonaws.com') && imageUrl.toLowerCase().includes('.svg')) {
-        imageUrl = imageUrl.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
-      }
-    }
+    // Dev proxy hack removed - handled by S3Image
 
     return {
       id: String(style.id || style._id),
@@ -404,7 +397,7 @@ export function StylePage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {newStyleIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
+                      <S3Image
                         src={newStyleIconPreview}
                         alt="Icon preview"
                         className="w-full h-full object-cover"
@@ -456,7 +449,7 @@ export function StylePage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {newStyleImagePreview ? (
                     <div className="w-48 h-32 rounded-lg overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
+                      <S3Image
                         src={newStyleImagePreview}
                         alt="Style image preview"
                         className="w-full h-full object-cover"
@@ -561,7 +554,7 @@ export function StylePage() {
                   >
                     {style.icon ? (
                       <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white shrink-0">
-                        <img
+                        <S3Image
                           src={style.icon}
                           alt={style.name}
                           className="w-full h-full object-cover"
@@ -625,7 +618,7 @@ export function StylePage() {
                             <div className="flex items-center justify-start gap-3">
                               {style.icon ? (
                                 <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
-                                  <img
+                                  <S3Image
                                     src={style.icon}
                                     alt={style.name}
                                     className="w-full h-full object-cover"
@@ -646,7 +639,7 @@ export function StylePage() {
                           <td className="w-[20%] py-4 px-6 text-left">
                             {(style as any).image ? (
                               <div className="w-16 h-16 rounded overflow-hidden border border-gray-200 bg-white">
-                                <img
+                                <S3Image
                                   src={(style as any).image}
                                   alt={`${style.name} image`}
                                   className="w-full h-full object-cover"
@@ -824,7 +817,7 @@ export function StylePage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {manageStyleIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
+                      <S3Image
                         src={manageStyleIconPreview}
                         alt="Style icon preview"
                         className="w-full h-full object-cover"
@@ -876,7 +869,7 @@ export function StylePage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {manageStyleImagePreview ? (
                     <div className="w-48 h-32 rounded-lg overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
+                      <S3Image
                         src={manageStyleImagePreview}
                         alt="Style image preview"
                         className="w-full h-full object-cover"

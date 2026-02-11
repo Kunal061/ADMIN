@@ -12,6 +12,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { S3Image } from '@/components/ui/S3Image';
 import { ColorPalette } from '@/components/ColorPalette';
 import { useEffect, useRef, useState } from 'react';
 import { apiClient } from '@/lib/apiClient';
@@ -40,10 +41,7 @@ const getMoodIconUrl = (mood: any): string => {
     else if (typeof mi === 'string' && mi.trim()) url = mi.trim();
   }
 
-  // Workaround for S3 SVG MIME type issue in local development
-  if (url && import.meta.env.DEV && url.includes('roamania.s3.ap-south-1.amazonaws.com') && url.toLowerCase().includes('.svg')) {
-    return url.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
-  }
+  // Dev proxy hack removed - handled by S3Image
 
   return url;
 };
@@ -365,7 +363,7 @@ export function MoodPage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {newMoodIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm">
-                      <img
+                      <S3Image
                         src={newMoodIconPreview}
                         alt="Icon preview"
                         className="w-full h-full object-contain"
@@ -488,7 +486,7 @@ export function MoodPage() {
                     <div className="shrink-0 flex items-center gap-3">
                       {mood.image && !failedIconIds.has(mood.id) ? (
                         <div className="w-12 h-12 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
-                          <img
+                          <S3Image
                             src={mood.image}
                             alt={mood.name}
                             className="w-full h-full object-contain"
@@ -559,7 +557,7 @@ export function MoodPage() {
                           <td className="w-[20%] py-4 px-6 text-left">
                             {mood.image && !failedIconIds.has(mood.id) ? (
                               <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white flex items-center justify-center">
-                                <img
+                                <S3Image
                                   src={mood.image}
                                   alt={mood.name}
                                   className="w-full h-full object-contain"
@@ -748,7 +746,7 @@ export function MoodPage() {
                 <div className="flex flex-col items-center justify-center gap-4 py-4">
                   {manageMoodIconPreview ? (
                     <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-gray-300 bg-white shadow-sm flex items-center justify-center">
-                      <img
+                      <S3Image
                         src={manageMoodIconPreview}
                         alt="Mood icon preview"
                         className="w-full h-full object-contain"
