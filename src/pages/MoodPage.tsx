@@ -73,7 +73,6 @@ export function MoodPage() {
       const list = data?.data?.data || data?.data || data || [];
       const transformed = Array.isArray(list) ? list.map(mapApiMood) : [];
       setMoods(transformed);
-  showToast('Moods loaded from API successfully!');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch moods';
       setApiError(message);

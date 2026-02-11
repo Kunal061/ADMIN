@@ -64,7 +64,6 @@ export function StylePage() {
       const list = data?.data?.data || data?.data || data || [];
       const transformed = Array.isArray(list) ? list.map(mapApiStyle) : [];
       setDisplayStyles(transformed);
-      showToast('Styles loaded from API successfully!');
     } catch (err) {
       console.error('Failed to fetch styles', err);
       const message = err instanceof Error ? err.message : 'Failed to fetch styles';

@@ -375,7 +375,6 @@ export function TripPage() {
 
     fetchTripsFromApi(controller.signal)
       .then(() => {
-        showToast('Trips loaded from API successfully!');
         hasRefreshedTripsRef.current = true;
         hasFetchedTripsFromApiRef.current = true;
       })

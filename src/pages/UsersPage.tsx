@@ -152,7 +152,6 @@ export function UsersPage() {
       });
       
       setTripUsers(transformedUsers);
-      showToast('Users loaded from API successfully!');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to fetch users';
       setApiError(errorMsg);
