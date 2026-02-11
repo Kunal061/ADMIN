@@ -592,6 +592,10 @@ export function TripPage() {
 
   const handleCreateTrip = async () => {
     // Validate required fields
+    if (!newTrip.description?.trim()) {
+      showToast('Please enter a description', 'error');
+      return;
+    }
     if (!newTrip.title.trim()) {
       showToast('Please enter a trip title', 'error');
       return;
@@ -608,10 +612,14 @@ export function TripPage() {
       showToast('Please select an end date', 'error');
       return;
     }
-    
+    if (!newTrip.type?.trim()) {
+      showToast('Please select a type', 'error');
+      return;
+    }
+
     // Validate date order
     if (new Date(newTrip.endDate) < new Date(newTrip.startDate)) {
-      showToast('End date must be after the start date.', 'error');
+      showToast('Choose Correct Dates', 'error');
       return;
     }
 
@@ -809,10 +817,18 @@ export function TripPage() {
       showToast('Please select an end date', 'error');
       return;
     }
-    
+    if (!newTrip.description?.trim()) {
+      showToast('Please enter a description', 'error');
+      return;
+    }
+    if (!newTrip.type?.trim()) {
+      showToast('Please select a type', 'error');
+      return;
+    }
+
     // Validate date order
     if (new Date(newTrip.endDate) < new Date(newTrip.startDate)) {
-      showToast('End date must be after the start date.', 'error');
+      showToast('Choose Correct Dates', 'error');
       return;
     }
 
@@ -969,12 +985,71 @@ export function TripPage() {
     }
   }, [editingTrip?.id, editingTrip?.moods]);
 
+  const handleEditTripStepContinue = () => {
+    if (editTripStep === 1 && editingTrip) {
+      if (!editingTrip.title?.trim()) {
+        showToast('Please enter a trip title', 'error');
+        return;
+      }
+      if (!editingTrip.destination?.trim()) {
+        showToast('Please enter a destination', 'error');
+        return;
+      }
+      if (!editingTrip.description?.trim()) {
+        showToast('Please enter a description', 'error');
+        return;
+      }
+      if (!editingTrip.startDate) {
+        showToast('Please select a start date', 'error');
+        return;
+      }
+      if (!editingTrip.endDate) {
+        showToast('Please select an end date', 'error');
+        return;
+      }
+      if (!editingTrip.type?.trim()) {
+        showToast('Please select a type', 'error');
+        return;
+      }
+      if (new Date(editingTrip.endDate) < new Date(editingTrip.startDate)) {
+        showToast('Choose Correct Dates', 'error');
+        return;
+      }
+    }
+    setEditTripStep((step) => Math.min(4, step + 1));
+  };
+
   const handleUpdateTrip = async () => {
     if (!editingTrip) return;
-    
+
+    if (!editingTrip.title?.trim()) {
+      showToast('Please enter a trip title', 'error');
+      return;
+    }
+    if (!editingTrip.destination?.trim()) {
+      showToast('Please enter a destination', 'error');
+      return;
+    }
+    if (!editingTrip.description?.trim()) {
+      showToast('Please enter a description', 'error');
+      return;
+    }
+    if (!editingTrip.startDate) {
+      showToast('Please select a start date', 'error');
+      return;
+    }
+    if (!editingTrip.endDate) {
+      showToast('Please select an end date', 'error');
+      return;
+    }
+    if (!editingTrip.type?.trim()) {
+      showToast('Please select a type', 'error');
+      return;
+    }
+
     // Validate date order
-    if (editingTrip.startDate && editingTrip.endDate && new Date(editingTrip.endDate) < new Date(editingTrip.startDate)) {
-      showToast('End date must be after the start date.', 'error');
+    if (new Date(editingTrip.endDate) < new Date(editingTrip.startDate)) {
+      showToast('Choose Correct Dates', 'error');
       return;
     }
 
@@ -1171,7 +1246,7 @@ export function TripPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="trip-description">Description (Optional)</Label>
+                  <Label htmlFor="trip-description">Description <span className="text-red-500">*</span></Label>
                   <Textarea
                     id="trip-description"
                     value={newTrip.description}
@@ -1207,7 +1282,7 @@ export function TripPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="trip-type">Type</Label>
+                    <Label htmlFor="trip-type">Type <span className="text-red-500">*</span></Label>
                     <select
                       id="trip-type"
                       value={newTrip.type}
@@ -1593,7 +1668,7 @@ export function TripPage() {
                 <Button
                   type="button"
                   onClick={handleCreateTripStepContinue}
-                  disabled={createTripStepLoading || createCoverUploadLoading || (createTripStep === 2 && !newTrip.coverImage) || (createTripStep === 3 && (!newTrip.description?.trim() || !newTrip.overviewNotes?.trim()))}
+                  disabled={createTripStepLoading || createCoverUploadLoading || (createTripStep === 1 && (!newTrip.title?.trim() || !newTrip.destination?.trim() || !newTrip.description?.trim() || !newTrip.type?.trim() || !newTrip.startDate || !newTrip.endDate)) || (createTripStep === 2 && !newTrip.coverImage) || (createTripStep === 3 && (!newTrip.description?.trim() || !newTrip.overviewNotes?.trim()))}
                   className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
                   style={{ backgroundColor: '#06B3C4' }}
                 >
@@ -2132,7 +2207,7 @@ export function TripPage() {
             {editTripStep === 1 && (
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label htmlFor="edit-trip-title">Trip Title</Label>
+                  <Label htmlFor="edit-trip-title">Trip Title <span className="text-red-500">*</span></Label>
                   <Input
                     id="edit-trip-title"
                     value={editingTrip.title}
@@ -2140,7 +2215,7 @@ export function TripPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-trip-destination">Destination</Label>
+                  <Label htmlFor="edit-trip-destination">Destination <span className="text-red-500">*</span></Label>
                   <Input
                     id="edit-trip-destination"
                     value={editingTrip.destination}
@@ -2149,7 +2224,7 @@ export function TripPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="edit-trip-description">Description</Label>
+                  <Label htmlFor="edit-trip-description">Description <span className="text-red-500">*</span></Label>
                   <Textarea
                     id="edit-trip-description"
                     value={editingTrip.description}
@@ -2159,7 +2234,7 @@ export function TripPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-trip-start">Start Date</Label>
+                    <Label htmlFor="edit-trip-start">Start Date <span className="text-red-500">*</span></Label>
                     <Input
                       id="edit-trip-start"
                       type="date"
@@ -2168,7 +2243,7 @@ export function TripPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-trip-end">End Date</Label>
+                    <Label htmlFor="edit-trip-end">End Date <span className="text-red-500">*</span></Label>
                     <Input
                       id="edit-trip-end"
                       type="date"
@@ -2179,7 +2254,7 @@ export function TripPage() {
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="edit-trip-type">Type</Label>
+                    <Label htmlFor="edit-trip-type">Type <span className="text-red-500">*</span></Label>
                     <select
                       id="edit-trip-type"
                       value={editingTrip.type ?? 'public'}
@@ -2572,8 +2647,8 @@ export function TripPage() {
               {editTripStep < 4 ? (
                 <Button
                   type="button"
-                  onClick={() => setEditTripStep((step) => Math.min(4, step + 1))}
-                  disabled={(editTripStep === 2 && !editingTrip?.coverImage) || (editTripStep === 3 && (!editingTrip?.description?.trim() || !editingTrip?.overviewNotes?.trim()))}
+                  onClick={handleEditTripStepContinue}
+                  disabled={(editTripStep === 1 && (!editingTrip?.title?.trim() || !editingTrip?.destination?.trim() || !editingTrip?.description?.trim() || !editingTrip?.type?.trim() || !editingTrip?.startDate || !editingTrip?.endDate)) || (editTripStep === 2 && !editingTrip?.coverImage) || (editTripStep === 3 && (!editingTrip?.description?.trim() || !editingTrip?.overviewNotes?.trim()))}
                   className="text-white hover:opacity-90 border-0 font-medium"
                   style={{ backgroundColor: '#06B3C4' }}
                 >
