@@ -52,7 +52,7 @@ const revokeBlobUrl = (url: string) => {
   if (url?.startsWith?.('blob:')) URL.revokeObjectURL(url);
 };
 
-const isSvgUrl = (url: string) => /\.svg(\?|$)/i.test(url) || /image\/svg/i.test(url);
+
 
 export function MoodPage() {
   const { showToast } = useApp();

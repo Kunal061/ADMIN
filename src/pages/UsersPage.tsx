@@ -871,7 +871,7 @@ export function UsersPage() {
             <p className="text-red-500 text-sm mb-2">⚠️ {apiError}</p>
             <p className="text-gray-500 text-sm">Showing local data instead.</p>
             <Button
-              onClick={fetchUsersFromAPI}
+              onClick={() => fetchUsersFromAPI()}
               className="mt-4 text-white hover:opacity-90"
               style={{ backgroundColor: '#06B3C4' }}
             >
