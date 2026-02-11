@@ -58,15 +58,30 @@ export function StylePage() {
   const [deleteLoading, setDeleteLoading] = useState(false);
 
 
-  const mapApiStyle = (style: any): StyleOption => ({
-    id: String(style.id || style._id),
-    name: style.styleName || style.name || '',
-    icon: style.icon || '',
-    image: style.image || '',
-  });
+  const mapApiStyle = (style: any): StyleOption => {
+    let iconUrl = style.icon || '';
+    let imageUrl = style.image || '';
 
-  const fetchStylesFromAPI = async () => {
-    setIsLoading(true);
+    // Workaround for S3 SVG MIME type issue in local development
+    if (import.meta.env.DEV) {
+      if (iconUrl && iconUrl.includes('roamania.s3.ap-south-1.amazonaws.com') && iconUrl.toLowerCase().includes('.svg')) {
+        iconUrl = iconUrl.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
+      }
+      if (imageUrl && imageUrl.includes('roamania.s3.ap-south-1.amazonaws.com') && imageUrl.toLowerCase().includes('.svg')) {
+        imageUrl = imageUrl.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
+      }
+    }
+
+    return {
+      id: String(style.id || style._id),
+      name: style.styleName || style.name || '',
+      icon: iconUrl,
+      image: imageUrl,
+    };
+  };
+
+  const fetchStylesFromAPI = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setApiError(null);
     try {
       const response = await apiClient.get('/styles/get-all-styles');
@@ -78,18 +93,26 @@ export function StylePage() {
       const transformed = Array.isArray(list) ? list.map(mapApiStyle) : [];
       setDisplayStyles(transformed);
     } catch (err) {
-      console.error('Failed to fetch styles', err);
-      const message = err instanceof Error ? err.message : 'Failed to fetch styles';
-      setApiError(message);
-      showToast(message, 'error');
-      setDisplayStyles(styles);
+      if (!silent) {
+        console.error('Failed to fetch styles', err);
+        const message = err instanceof Error ? err.message : 'Failed to fetch styles';
+        setApiError(message);
+        showToast(message, 'error');
+        setDisplayStyles(styles);
+      }
+    } finally {
+      if (!silent) setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   useEffect(() => {
     fetchStylesFromAPI();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    const intervalId = setInterval(() => {
+      fetchStylesFromAPI(true);
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Reset to page 1 when search query changes

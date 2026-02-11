@@ -30,13 +30,22 @@ const isValidIconFile = (file: File): boolean => {
 };
 
 const getMoodIconUrl = (mood: any): string => {
-  if (typeof mood.icon === 'string' && mood.icon.trim()) return mood.icon.trim();
-  if (typeof mood.image === 'string' && mood.image.trim()) return mood.image.trim();
-  const mi = mood.moodImage;
-  if (mi && typeof mi === 'object' && typeof mi.image === 'string' && mi.image.trim())
-    return mi.image.trim();
-  if (typeof mi === 'string' && mi.trim()) return mi.trim();
-  return '';
+  let url = '';
+  if (typeof mood.icon === 'string' && mood.icon.trim()) url = mood.icon.trim();
+  else if (typeof mood.image === 'string' && mood.image.trim()) url = mood.image.trim();
+  else {
+    const mi = mood.moodImage;
+    if (mi && typeof mi === 'object' && typeof mi.image === 'string' && mi.image.trim())
+      url = mi.image.trim();
+    else if (typeof mi === 'string' && mi.trim()) url = mi.trim();
+  }
+
+  // Workaround for S3 SVG MIME type issue in local development
+  if (url && import.meta.env.DEV && url.includes('roamania.s3.ap-south-1.amazonaws.com') && url.toLowerCase().includes('.svg')) {
+    return url.replace('https://roamania.s3.ap-south-1.amazonaws.com', '/s3-proxy');
+  }
+
+  return url;
 };
 
 const revokeBlobUrl = (url: string) => {
@@ -90,8 +99,8 @@ export function MoodPage() {
     isActive: mood.isActive ?? true,
   });
 
-  const fetchMoodsFromAPI = async () => {
-    setIsLoading(true);
+  const fetchMoodsFromAPI = async (silent = false) => {
+    if (!silent) setIsLoading(true);
     setApiError(null);
     try {
       const response = await apiClient.get('/moods/get-all-moods');
@@ -104,16 +113,24 @@ export function MoodPage() {
       setMoods(transformed);
       setFailedIconIds(new Set());
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch moods';
-      setApiError(message);
-      showToast(message, 'error');
+      if (!silent) {
+        const message = err instanceof Error ? err.message : 'Failed to fetch moods';
+        setApiError(message);
+        showToast(message, 'error');
+      }
     } finally {
-      setIsLoading(false);
+      if (!silent) setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchMoodsFromAPI();
+
+    const intervalId = setInterval(() => {
+      fetchMoodsFromAPI(true);
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
   }, []);
 
   // Reset to page 1 when search query changes

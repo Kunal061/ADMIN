@@ -1,4 +1,4 @@
- import { defineConfig } from 'vite'
+import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
@@ -12,6 +12,19 @@ export default defineConfig({
         target: 'https://devapi-roamania.codibex.com',
         changeOrigin: true,
         secure: true,
+      },
+      '/s3-proxy': {
+        target: 'https://roamania.s3.ap-south-1.amazonaws.com',
+        changeOrigin: true,
+        secure: true,
+        rewrite: (path) => path.replace(/^\/s3-proxy/, ''),
+        configure: (proxy, _options) => {
+          proxy.on('proxyRes', (proxyRes, req, _res) => {
+            if (req.url && req.url.includes('.svg')) {
+              proxyRes.headers['content-type'] = 'image/svg+xml';
+            }
+          });
+        },
       },
     },
   },

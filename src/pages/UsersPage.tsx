@@ -109,8 +109,8 @@ export function UsersPage() {
   }
 
   // Fetch users from external API
-  const fetchUsersFromAPI = async () => {
-    setLoading(true);
+  const fetchUsersFromAPI = async (silent = false) => {
+    if (!silent) setLoading(true);
     setApiError(null);
     try {
       const response = await apiClient.get('/admin/users');
@@ -153,18 +153,26 @@ export function UsersPage() {
 
       setTripUsers(transformedUsers);
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : 'Failed to fetch users';
-      setApiError(errorMsg);
-      showToast('Failed to load users from API. Loading local data...');
-      // Fallback to localStorage
-      setTripUsers(storage.getTripUsers());
+      if (!silent) {
+        const errorMsg = err instanceof Error ? err.message : 'Failed to fetch users';
+        setApiError(errorMsg);
+        showToast('Failed to load users from API. Loading local data...');
+        // Fallback to localStorage
+        setTripUsers(storage.getTripUsers());
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchUsersFromAPI();
+
+    const intervalId = setInterval(() => {
+      fetchUsersFromAPI(true);
+    }, 2000); // Poll every 2 seconds
+
+    return () => clearInterval(intervalId);
   }, []);
 
   const mapApiMood = (mood: any) => ({
@@ -499,7 +507,7 @@ export function UsersPage() {
           </div>
           <Button
             size="sm"
-            onClick={fetchUsersFromAPI}
+            onClick={() => fetchUsersFromAPI()}
             disabled={loading}
             className="h-8 px-3 text-xs text-white hover:opacity-90"
             style={{ backgroundColor: '#06B3C4' }}
