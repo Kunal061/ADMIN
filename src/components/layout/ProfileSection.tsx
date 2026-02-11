@@ -215,7 +215,7 @@ export function ProfileSection() {
                       value={firstName}
                       onChange={(e) => setFirstName(e.target.value)}
                       placeholder="Enter first name"
-                      className="h-10 border-gray-300 focus:border-teal-500 focus:ring-teal-500"
+                      className="h-10 border-gray-300 focus:border-black focus:ring-black"
                     />
                   </div>
                   <div className="space-y-2">
@@ -227,7 +227,7 @@ export function ProfileSection() {
                       value={lastName}
                       onChange={(e) => setLastName(e.target.value)}
                       placeholder="Enter last name"
-                      className="h-10 border-gray-300 focus:border-teal-500 focus:ring-teal-500"
+                      className="h-10 border-gray-300 focus:border-black focus:ring-black"
                     />
                   </div>
                 </div>
@@ -251,19 +251,7 @@ export function ProfileSection() {
                     )}
                   </Button>
                   {(firstName.trim() || lastName.trim()) &&
-                    [firstName.trim(), lastName.trim()].filter(Boolean).join(' ') !== currentUser.name && (
-                    <Button
-                      onClick={() => {
-                        const nameParts = currentUser.name.split(' ').filter(Boolean);
-                        setFirstName(nameParts[0] || '');
-                        setLastName(nameParts.slice(1).join(' '));
-                      }}
-                      variant="outline"
-                      className="h-10 px-5 text-sm font-medium border-gray-300 hover:bg-gray-50"
-                    >
-                      Cancel
-                    </Button>
-                  )}
+                    )
                 </div>
               </div>
             </div>
@@ -291,7 +279,7 @@ export function ProfileSection() {
                       onChange={(e) => setOtpCode(e.target.value)}
                       placeholder={otpSent ? "Enter 6-digit code" : "Click 'Send Code' first"}
                       disabled={!otpSent}
-                      className="h-10 flex-1 border-gray-300 focus:border-teal-500 focus:ring-teal-500 disabled:bg-gray-50 disabled:text-gray-400"
+                      className="h-10 flex-1 border-gray-300 focus:border-black focus:ring-black disabled:bg-gray-50 disabled:text-gray-400"
                     />
                     <Button
                       type="button"
@@ -331,12 +319,11 @@ export function ProfileSection() {
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
                     placeholder="Minimum 6 characters"
-                    className="h-10 border-gray-300 focus:border-teal-500 focus:ring-teal-500"
+                    className="h-10 border-gray-300 focus:border-black focus:ring-black"
                   />
                   {newPassword && (
-                    <p className={`text-xs flex items-center gap-1.5 ${
-                      newPassword.length >= 6 ? 'text-green-600' : 'text-amber-600'
-                    }`}>
+                    <p className={`text-xs flex items-center gap-1.5 ${newPassword.length >= 6 ? 'text-green-600' : 'text-amber-600'
+                      }`}>
                       {newPassword.length >= 6 ? (
                         <>
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
@@ -365,12 +352,11 @@ export function ProfileSection() {
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter your password"
-                    className="h-10 border-gray-300 focus:border-teal-500 focus:ring-teal-500"
+                    className="h-10 border-gray-300 focus:border-black focus:ring-black"
                   />
                   {confirmPassword && (
-                    <p className={`text-xs flex items-center gap-1.5 ${
-                      newPassword === confirmPassword ? 'text-green-600' : 'text-red-600'
-                    }`}>
+                    <p className={`text-xs flex items-center gap-1.5 ${newPassword === confirmPassword ? 'text-green-600' : 'text-red-600'
+                      }`}>
                       {newPassword === confirmPassword ? (
                         <>
                           <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">

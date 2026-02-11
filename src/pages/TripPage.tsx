@@ -1244,7 +1244,7 @@ export function TripPage() {
     }
 
     deleteTrip(trip.id);
-    showToast('Trip deleted successfully!');
+    showToast('Trip deleted successfully!', 'error');
     if (editingTrip?.id === trip.id) {
       setEditingTrip(null);
       setEditTripDialogOpen(false);

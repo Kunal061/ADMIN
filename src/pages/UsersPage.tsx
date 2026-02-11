@@ -373,7 +373,7 @@ export function UsersPage() {
       const response = await apiClient.delete(`/admin/users/${id}`);
       if (response.status < 200 || response.status >= 300) throw new Error('Failed to delete on API');
       refreshTripUsers();
-      showToast('User removed successfully!');
+      showToast('User removed successfully!', 'error');
     } catch {
       showToast('Failed to delete on API. Removing locally.');
       storage.deleteTripUser(id);
@@ -839,31 +839,6 @@ export function UsersPage() {
               </div>
             </div>
             <DialogFooter className="flex justify-end gap-1.5 mt-4">
-              <Button
-                onClick={() => {
-                  setDialogOpen(false);
-                  setNewFirstName('');
-                  setNewLastName('');
-                  setNewEmail('');
-                  setNewPhone('');
-                  setNewDobDay('');
-                  setNewDobMonth('');
-                  setNewDobYear('');
-                  setNewGender('');
-                  setNewPassword('');
-                  setSelectedMoodIds([]);
-                  setSelectedStyleIds([]);
-                  setNewEmergencyName('');
-                  setNewEmergencyRelationship('');
-                  setNewEmergencyContactNo('');
-                  setNewEmergencyEmail('');
-                  setError(null);
-                }}
-                className="h-9 px-4 text-sm text-white font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
               <Button
                 onClick={handleAddUser}
                 className="h-9 px-4 text-sm text-white font-medium"
@@ -1456,14 +1431,7 @@ export function UsersPage() {
             </div>
           </div>
           <DialogFooter className="flex justify-end gap-1.5 mt-4">
-            <Button
-              type="button"
-              className="h-9 px-4 text-sm text-white font-medium"
-              style={{ backgroundColor: '#06B3C4' }}
-              onClick={resetManageDialog}
-            >
-              Cancel
-            </Button>
+
             <Button
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"
@@ -1494,20 +1462,7 @@ export function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end gap-2">
-            <Button
-              type="button"
-              className="h-9 px-4 text-sm text-white font-medium"
-              style={{ backgroundColor: '#06B3C4' }}
-              onClick={() => {
-                if (!deleteLoading) {
-                  setDeleteDialogOpen(false);
-                  setDeleteUserId('');
-                  setDeleteUserName('');
-                }
-              }}
-            >
-              Cancel
-            </Button>
+
             <Button
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"

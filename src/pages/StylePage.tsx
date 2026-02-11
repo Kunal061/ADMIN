@@ -187,7 +187,7 @@ export function StylePage() {
       if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to delete style');
       }
-      showToast('Style deleted successfully!');
+      showToast('Style deleted successfully!', 'error');
       fetchStylesFromAPI();
       if (activeActionStyle?.id === id) {
         setActiveActionStyle(null);
@@ -371,17 +371,7 @@ export function StylePage() {
 
             </div>
             <DialogFooter>
-              <Button
-                onClick={() => {
-                  setDialogOpen(false);
-                  setNewStyleName('');
-                  clearAddStyleMedia();
-                }}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleCreateStyle}
                 className="text-white hover:opacity-90 border-0 font-medium"
@@ -476,9 +466,10 @@ export function StylePage() {
                 <table className="w-full table-fixed">
                   <thead>
                     <tr className="border-b" style={{ borderColor: '#EEF0F1' }}>
-                      <th className="w-[25%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
-                      <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
-                      <th className="w-[20%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
+                      <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Name</th>
+                      <th className="w-[15%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Icon</th>
+                      <th className="w-[20%] text-left py-4 px-6 text-sm font-semibold text-gray-700">Image</th>
+                      <th className="w-[15%] text-right py-4 px-6 text-sm font-semibold text-gray-700">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -491,12 +482,12 @@ export function StylePage() {
                             borderColor: '#EEF0F1',
                           }}
                         >
-                          <td className="w-[25%] py-4 px-6 text-left">
+                          <td className="w-[20%] py-4 px-6 text-left">
                             <div className="font-medium text-gray-900">
                               {style.name}
                             </div>
                           </td>
-                          <td className="w-[20%] py-4 px-6 text-left">
+                          <td className="w-[15%] py-4 px-6 text-left">
                             <div className="flex items-center justify-start gap-3">
                               {style.icon ? (
                                 <div className="w-8 h-8 rounded-full overflow-hidden border border-gray-200 bg-white">
@@ -518,7 +509,20 @@ export function StylePage() {
                               />
                             </div>
                           </td>
-                          <td className="w-[20%] py-3 px-6 text-right">
+                          <td className="w-[20%] py-4 px-6 text-left">
+                            {(style as any).image ? (
+                              <div className="w-16 h-16 rounded overflow-hidden border border-gray-200 bg-white">
+                                <img
+                                  src={(style as any).image}
+                                  alt={`${style.name} image`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td className="w-[15%] py-3 px-6 text-right">
                             <div className="flex items-center gap-1.5 justify-end">
                               <Button
                                 size="sm"
@@ -643,17 +647,7 @@ export function StylePage() {
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingStyle(null);
-                  setEditStyleName('');
-                }}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#03A9F4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleUpdateStyle}
                 className="text-white hover:opacity-90 border-0 font-medium"
@@ -746,13 +740,7 @@ export function StylePage() {
 
             </div>
             <DialogFooter className="flex flex-row justify-between w-full">
-              <Button
-                onClick={handleCancelManageStyle}
-                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleSaveManageStyle}
                 className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
@@ -783,20 +771,7 @@ export function StylePage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end gap-2">
-            <Button
-              type="button"
-              className="h-9 px-4 text-sm text-white font-medium"
-              style={{ backgroundColor: '#06B3C4' }}
-              onClick={() => {
-                if (!deleteLoading) {
-                  setDeleteDialogOpen(false);
-                  setDeleteStyleId('');
-                  setDeleteStyleName('');
-                }
-              }}
-            >
-              Cancel
-            </Button>
+
             <Button
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"

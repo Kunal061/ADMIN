@@ -199,7 +199,7 @@ export function MoodPage() {
       if (response.status < 200 || response.status >= 300) {
         throw new Error(data?.message || 'Failed to delete mood');
       }
-      showToast('Mood deleted successfully!');
+      showToast('Mood deleted successfully!', 'error');
       if (activeActionMood?.id === id) {
         setActiveActionMood(null);
         setManageMoodName('');
@@ -406,22 +406,7 @@ export function MoodPage() {
 
             </div>
             <DialogFooter>
-              <Button
-                onClick={() => {
-                  setDialogOpen(false);
-                  setNewMoodName('');
-                  setNewMoodColor('#000000');
-                  setNewMoodIconFile(null);
-                  setNewMoodIconPreview((prev) => {
-                    revokeBlobUrl(prev);
-                    return '';
-                  });
-                }}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleCreateMood}
                 disabled={createMoodLoading}
@@ -737,17 +722,7 @@ export function MoodPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setEditingMood(null);
-                  setEditMoodName('');
-                }}
-                className="text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#03A9F4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleUpdateMood}
                 className="text-white hover:opacity-90 border-0 font-medium"
@@ -865,13 +840,7 @@ export function MoodPage() {
 
             </div>
             <DialogFooter className="flex flex-row justify-between w-full">
-              <Button
-                onClick={handleCancelManageMood}
-                className="h-9 px-4 text-sm text-white hover:opacity-90 border-0 font-medium"
-                style={{ backgroundColor: '#06B3C4' }}
-              >
-                Cancel
-              </Button>
+
               <Button
                 onClick={handleSaveManageMood}
                 disabled={manageSaveLoading}
@@ -910,20 +879,7 @@ export function MoodPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex justify-end gap-2">
-            <Button
-              type="button"
-              className="h-9 px-4 text-sm text-white font-medium"
-              style={{ backgroundColor: '#06B3C4' }}
-              onClick={() => {
-                if (!deleteLoading) {
-                  setDeleteDialogOpen(false);
-                  setDeleteMoodId('');
-                  setDeleteMoodName('');
-                }
-              }}
-            >
-              Cancel
-            </Button>
+
             <Button
               type="button"
               className="h-9 px-4 text-sm text-white font-medium"
