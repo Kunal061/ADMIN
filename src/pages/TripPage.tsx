@@ -149,6 +149,24 @@ const normalizeApiPlaces = (apiTrip: unknown): Trip['places'] => {
   return [];
 };
 
+const extractIdList = (arr: unknown): string[] | undefined => {
+  if (!Array.isArray(arr)) return undefined;
+  const ids = arr.map((item: unknown) => {
+    if (typeof item === 'string') return item?.trim() || '';
+    if (item && typeof item === 'object') {
+      const o = item as Record<string, unknown>;
+      const userObj = o.user && typeof o.user === 'object' ? (o.user as Record<string, unknown>) : null;
+      const id = getString(
+        o.id ?? o._id ?? o.moodId ?? o.styleId ?? o.userId ?? userObj?.id ?? userObj?._id,
+        ''
+      ).trim();
+      return id;
+    }
+    return '';
+  }).filter(Boolean);
+  return ids.length > 0 ? ids : undefined;
+};
+
 const mapTripFromApi = (apiTrip: unknown, index: number): Trip => {
   const trip = asRecord(apiTrip);
   const overview = asRecord(trip.overview);
@@ -172,16 +190,22 @@ const mapTripFromApi = (apiTrip: unknown, index: number): Trip => {
     title: getString(trip.tripName ?? trip.title ?? trip.name ?? overview.name, ''),
     description: getString(trip.description ?? overview.summary ?? overview.notes, ''),
     destination,
-    startDate: getString(trip.startDate ?? trip.start_date ?? trip.start, ''),
-    endDate: getString(trip.endDate ?? trip.end_date ?? trip.end, ''),
+    startDate: normalizeDateInput(getString(trip.startDate ?? trip.start_date ?? trip.start, '')),
+    endDate: normalizeDateInput(getString(trip.endDate ?? trip.end_date ?? trip.end, '')),
     coverImage: getString(trip.coverImage ?? trip.wallpaper ?? journal.wallpaper, ''),
     type: getString(trip.type ?? overview.type, 'public'),
     isFeatured: Boolean(trip.isFeatured),
     overviewType: getString(overview.type, ''),
     overviewNotes: getString(overview.notes, ''),
     itinerary: normalizeApiItinerary(trip.itinerary ?? trip.dayWiseItinerary),
-    moods: Array.isArray(mood.moods) ? mood.moods.map(item => getString(item, '')).filter(Boolean) : undefined,
-    styles: Array.isArray(style.styles) ? style.styles.map(item => getString(item, '')).filter(Boolean) : undefined,
+    moods:
+      extractIdList(mood.moods) ??
+      extractIdList(trip.moods) ??
+      extractIdList(Array.isArray(trip.mood) ? trip.mood : undefined),
+    styles:
+      extractIdList(style.styles) ??
+      extractIdList(trip.styles) ??
+      extractIdList(Array.isArray(trip.style) ? trip.style : undefined),
     places: normalizeApiPlaces(trip),
     status: statusRaw
       ? statusRaw === 'Inactive'
@@ -190,14 +214,8 @@ const mapTripFromApi = (apiTrip: unknown, index: number): Trip => {
       : isDraft
         ? 'Inactive'
         : 'Active',
-    participantIds: Array.isArray(trip.members)
-      ? trip.members
-          .map(member => {
-            const memberObj = asRecord(member);
-            return getString(memberObj.id ?? memberObj._id ?? memberObj.userId ?? member, '');
-          })
-          .filter(Boolean)
-      : undefined,
+    participantIds:
+      extractIdList(trip.members) ?? extractIdList(trip.participants),
     rating: typeof trip.rating === 'number' ? trip.rating : undefined,
     price: typeof trip.price === 'number' ? trip.price : undefined,
     createdAt: getString(trip.createdAt ?? trip.created_at, '') || undefined,
@@ -310,60 +328,70 @@ export function TripPage() {
     setCurrentPage(1);
   }, [searchQuery, trips.length]);
 
+  const fetchTripById = useCallback(async (tripId: string): Promise<Trip | null> => {
+    try {
+      const response = await apiClient.get(`/admin/trips/${tripId}`);
+      const data = response.data;
+      const raw = data?.data?.data ?? data?.data ?? data;
+      if (!raw || typeof raw !== 'object') return null;
+      return mapTripFromApi(raw, 0);
+    } catch {
+      return null;
+    }
+  }, []);
+
+  const fetchMoodsAndStyles = useCallback(async (signal?: AbortSignal) => {
+    if (!API_BASE_URL) return;
+    try {
+      const [moodsResponse, stylesResponse] = await Promise.all([
+        apiClient.get('/moods/get-all-moods', { signal }),
+        apiClient.get('/styles/get-all-styles', { signal }),
+      ]);
+
+      const moodsData = moodsResponse.data;
+      const stylesData = stylesResponse.data;
+
+      if (moodsResponse.status >= 200 && moodsResponse.status < 300) {
+        const list = moodsData?.data?.data || moodsData?.data || moodsData || [];
+        const transformed = Array.isArray(list)
+          ? list.map((mood: any) => ({
+              id: String(mood.id || mood._id),
+              name: mood.moodName || mood.name || '',
+              description: mood.description || '',
+              icon: mood.icon || mood.image || '',
+              image: mood.image || mood.icon || undefined,
+              isActive: mood.isActive ?? true,
+              moodImage: mood.moodImage || undefined,
+            }))
+          : [];
+        setApiMoods(transformed);
+      }
+
+      if (stylesResponse.status >= 200 && stylesResponse.status < 300) {
+        const list = stylesData?.data?.data || stylesData?.data || stylesData || [];
+        const transformed = Array.isArray(list)
+          ? list.map((style: any) => ({
+              id: String(style.id || style._id),
+              name: style.styleName || style.name || '',
+              icon: style.icon || style.image || undefined,
+              image: style.image || style.icon || undefined,
+              isActive: style.isActive ?? true,
+            }))
+          : [];
+        setApiStyles(transformed);
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') return;
+      // Silent fallback to context data
+    }
+  }, [API_BASE_URL]);
+
   useEffect(() => {
     if (!API_BASE_URL) return;
-
     const controller = new AbortController();
-
-    const fetchMoodsAndStyles = async () => {
-      try {
-        const [moodsResponse, stylesResponse] = await Promise.all([
-          apiClient.get('/moods/get-all-moods', { signal: controller.signal }),
-          apiClient.get('/styles/get-all-styles', { signal: controller.signal }),
-        ]);
-
-        const moodsData = moodsResponse.data;
-        const stylesData = stylesResponse.data;
-
-        if (moodsResponse.status >= 200 && moodsResponse.status < 300) {
-          const list = moodsData?.data?.data || moodsData?.data || moodsData || [];
-          const transformed = Array.isArray(list)
-            ? list.map((mood: any) => ({
-                id: String(mood.id || mood._id),
-                name: mood.moodName || mood.name || '',
-                description: mood.description || '',
-                icon: mood.icon || mood.image || '',
-                image: mood.image || mood.icon || undefined,
-                isActive: mood.isActive ?? true,
-                moodImage: mood.moodImage || undefined,
-              }))
-            : [];
-          setApiMoods(transformed);
-        }
-
-        if (stylesResponse.status >= 200 && stylesResponse.status < 300) {
-          const list = stylesData?.data?.data || stylesData?.data || stylesData || [];
-          const transformed = Array.isArray(list)
-            ? list.map((style: any) => ({
-                id: String(style.id || style._id),
-                name: style.styleName || style.name || '',
-                icon: style.icon || style.image || undefined,
-                image: style.image || style.icon || undefined,
-                isActive: style.isActive ?? true,
-              }))
-            : [];
-          setApiStyles(transformed);
-        }
-      } catch (err) {
-        if ((err as Error).name === 'AbortError') return;
-        // Silent fallback to context data
-      }
-    };
-
-    fetchMoodsAndStyles();
-
+    fetchMoodsAndStyles(controller.signal);
     return () => controller.abort();
-  }, [API_BASE_URL]);
+  }, [API_BASE_URL, fetchMoodsAndStyles]);
 
   // Initial fetch of trips from API on mount
   useEffect(() => {
@@ -882,21 +910,44 @@ export function TripPage() {
     });
   };
 
-  const handleEditTrip = (trip: Trip) => {
-    setEditingTrip({
-      ...trip,
-      participantIds: trip.participantIds ?? [],
-      type: normalizeTripType(trip.type),
-      isFeatured: trip.isFeatured ?? false,
-      overviewType: trip.overviewType ?? '',
-      overviewNotes: trip.overviewNotes ?? '',
-      description: trip.description ?? '',
-      destination: trip.destination ?? '',
-      startDate: normalizeDateInput(trip.startDate),
-      endDate: normalizeDateInput(trip.endDate),
-    });
-    setEditingSelectedStyles(trip.styles ?? []);
-    setEditingSelectedMoods(trip.moods ?? []);
+  const handleEditTrip = async (trip: Trip) => {
+    if (API_BASE_URL) {
+      fetchMoodsAndStyles();
+    }
+    let tripToEdit = trip;
+    if (API_BASE_URL && isObjectId(trip.id)) {
+      const fetched = await fetchTripById(trip.id);
+      if (fetched) {
+        tripToEdit = {
+          ...fetched,
+          participantIds: fetched.participantIds ?? [],
+          type: normalizeTripType(fetched.type),
+          isFeatured: fetched.isFeatured ?? false,
+          overviewType: fetched.overviewType ?? '',
+          overviewNotes: fetched.overviewNotes ?? '',
+          description: fetched.description ?? '',
+          destination: fetched.destination ?? '',
+          startDate: normalizeDateInput(fetched.startDate),
+          endDate: normalizeDateInput(fetched.endDate),
+        };
+      }
+    } else {
+      tripToEdit = {
+        ...trip,
+        participantIds: trip.participantIds ?? [],
+        type: normalizeTripType(trip.type),
+        isFeatured: trip.isFeatured ?? false,
+        overviewType: trip.overviewType ?? '',
+        overviewNotes: trip.overviewNotes ?? '',
+        description: trip.description ?? '',
+        destination: trip.destination ?? '',
+        startDate: normalizeDateInput(trip.startDate),
+        endDate: normalizeDateInput(trip.endDate),
+      };
+    }
+    setEditingTrip(tripToEdit);
+    setEditingSelectedStyles(tripToEdit.styles ?? []);
+    setEditingSelectedMoods(tripToEdit.moods ?? []);
     setEditCoverFile(null);
     setEditTripStep(1);
     setEditTripDialogOpen(true);
@@ -1430,14 +1481,12 @@ export function TripPage() {
                   <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     {newTrip.title.trim() || '—'}
                   </div>
-                  <p className="text-xs text-gray-500">Read-only (from Trip Title)</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Overview Type</Label>
                   <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     {newTrip.destination?.trim() || 'adventure'}
                   </div>
-                  <p className="text-xs text-gray-500">Read-only (derived from Destination)</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="overview-summary">Summary <span className="text-red-500">*</span></Label>
@@ -1530,11 +1579,11 @@ export function TripPage() {
                 <div className="space-y-4 pt-2">
                   <Label className="text-base font-semibold">Best for Mood</Label>
                   <div className="flex flex-wrap gap-2">
-                    {moodOptions.filter(mood => mood.isActive).length === 0 ? (
+                    {moodOptions.filter(mood => mood.isActive !== false).length === 0 ? (
                       <p className="text-sm text-gray-500">No moods available yet.</p>
                     ) : (
                       moodOptions
-                        .filter(mood => mood.isActive)
+                        .filter(mood => mood.isActive !== false)
                         .map((mood) => {
                           const isSelected = selectedMoods.includes(mood.id);
                           return (
@@ -2408,14 +2457,12 @@ export function TripPage() {
                   <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     {editingTrip.title?.trim() || '—'}
                   </div>
-                  <p className="text-xs text-gray-500">Read-only (from Trip Title)</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Overview Type</Label>
                   <div className="flex h-10 w-full items-center rounded-md border border-input bg-muted px-3 py-2 text-sm text-muted-foreground">
                     {(editingTrip.overviewType ?? '').trim() || editingTrip.destination?.trim() || 'adventure'}
                   </div>
-                  <p className="text-xs text-gray-500">Read-only (derived)</p>
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="edit-overview-summary">Summary <span className="text-red-500">*</span></Label>
@@ -2508,11 +2555,11 @@ export function TripPage() {
                 <div className="space-y-4 pt-2">
                   <Label className="text-base font-semibold">Best for Mood</Label>
                   <div className="flex flex-wrap gap-2">
-                    {moodOptions.filter(mood => mood.isActive).length === 0 ? (
+                    {moodOptions.filter(mood => mood.isActive !== false).length === 0 ? (
                       <p className="text-sm text-gray-500">No moods available yet.</p>
                     ) : (
                       moodOptions
-                        .filter(mood => mood.isActive)
+                        .filter(mood => mood.isActive !== false)
                         .map((mood) => {
                           const isSelected = editingSelectedMoods.includes(mood.id);
                           return (

@@ -172,6 +172,7 @@ export function UsersPage() {
     name: mood.moodName || mood.name || '',
     icon: mood.icon || mood.image || '',
     color: mood.color || '#06B3C4',
+    isActive: mood.isActive ?? true,
   });
 
   const mapApiStyle = (style: any) => ({
@@ -179,6 +180,7 @@ export function UsersPage() {
     name: style.styleName || style.name || '',
     icon: style.icon || style.image || '',
     color: style.color || '#06B3C4',
+    isActive: style.isActive ?? true,
   });
 
   const fetchMoodsFromAPI = async () => {
@@ -695,7 +697,7 @@ export function UsersPage() {
                   )}
                   {!moodsLoading && moods.length > 0 && (
                     <div className="flex flex-wrap gap-2 max-w-full">
-                      {moods.map((mood) => {
+                      {moods.filter(m => m.isActive !== false).map((mood) => {
                         const selected = selectedMoodIds.includes(mood.id);
                         return (
                           <button
@@ -756,7 +758,7 @@ export function UsersPage() {
                   )}
                   {!stylesLoading && styles.length > 0 && (
                     <div className="flex flex-wrap gap-2 max-w-full">
-                      {styles.map((style) => {
+                      {styles.filter(s => s.isActive !== false).map((style) => {
                         const selected = selectedStyleIds.includes(style.id);
                         return (
                           <button
@@ -1311,7 +1313,7 @@ export function UsersPage() {
                 )}
                 {!moodsLoading && moods.length > 0 && (
                   <div className="flex flex-wrap gap-2 max-w-full">
-                    {moods.map((mood) => {
+                    {moods.filter(m => m.isActive !== false).map((mood) => {
                       const selected = manageSelectedMoodIds.includes(mood.id);
                       return (
                         <button
@@ -1372,7 +1374,7 @@ export function UsersPage() {
                 )}
                 {!stylesLoading && styles.length > 0 && (
                   <div className="flex flex-wrap gap-2 max-w-full">
-                    {styles.map((style) => {
+                    {styles.filter(s => s.isActive !== false).map((style) => {
                       const selected = manageSelectedStyleIds.includes(style.id);
                       return (
                         <button
